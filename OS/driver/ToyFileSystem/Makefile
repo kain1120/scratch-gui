@@ -7,9 +7,12 @@ ifneq ($(KERNELRELEASE),)
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
 else
-#	KERNELDIR ?= /lib/modules/$(shell uname -r)/build
-	KERNELDIR ?= /lib/modules/4.4.0-161-generic/build
+	KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 	PWD := $(shell pwd)
+
 default:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
+
+clean:
+	rm -rf *.o *.cmd *.ko *.mod.c .tmp_versions modules.order Module.symvers
 endif

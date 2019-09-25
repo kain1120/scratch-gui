@@ -5,7 +5,7 @@
 struct dir_entry 
 {
 	char filename[MAXLEN];
-	uint8_t idxr;
+	uint8_t idx;
 };
 
 struct file_blk

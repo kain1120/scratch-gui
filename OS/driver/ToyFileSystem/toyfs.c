@@ -3,8 +3,12 @@
 #include <linux/fs.h>
 #include <linux/uaccess.h>
 #include <linux/time.h>
+#include <linux/timekeeping32.h>
+#include <linux/version.h>
 
 #include "toyfs.h"
+
+#define CURRENT_TIME        (current_kernel_time())
 
 MODULE_LICENSE("Dual BSD/GPL");
 
@@ -27,6 +31,7 @@ static int get_block(void)
 	return -1;
 }
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0))
 static int toyfs_readdir(struct file *filp, void *dirent, filldir_t filldir)
 {
 	loff_t pos;
@@ -56,6 +61,48 @@ static int toyfs_readdir(struct file *filp, void *dirent, filldir_t filldir)
 
 	return 0;
 }
+#else
+static int toyfs_readdir(struct file *file, struct dir_context *ctx)
+{
+	struct file_blk *blk;
+	struct dir_entry *entry;
+	int i;
+
+	if (ctx->pos != 0) 
+	{
+		return 0;
+	}
+
+    if (!dir_emit_dots(file, ctx))
+	{
+        return 0;
+	}
+
+	if (ctx->pos != 2) 
+	{
+		return 0;
+	}
+	
+	blk = (struct file_blk *)file->f_path.dentry->d_inode->i_private;
+
+	if (!S_ISDIR(blk->mode))
+	{
+		return -ENOTDIR;
+	}
+
+	entry = (struct dir_entry *)&blk->data[0];
+	
+	for (i = 0; i < blk->dir_children; ++i)
+	{
+		dir_emit(ctx, entry[i].filename, MAXLEN, entry[i].idx, DT_UNKNOWN);
+		ctx->pos++;
+	}
+
+	return 0;
+
+}
+
+#endif
 
 ssize_t toyfs_read(struct file *filp, char __user *buf, size_t len, loff_t *ppos)
 {
@@ -110,7 +157,11 @@ const struct file_operations toyfs_file_operations =
 const struct file_operations toyfs_dir_operations =
 {
 	.owner = THIS_MODULE,
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0))
 	.readdir = toyfs_readdir,
+#else
+	.iterate = toyfs_readdir,
+#endif
 };
 
 static struct inode_operations toyfs_inode_ops; 
@@ -182,8 +233,9 @@ static int toyfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	return toyfs_do_create(dir, dentry, S_IFDIR | mode);
 }
 
-static int toyfs_create(struct inode *dir, struct dentry *dentry, umode_t mode)
+static int toyfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
 {
+	(void) excl;
 	return toyfs_do_create(dir, dentry, S_IFDIR | mode);
 }
 
