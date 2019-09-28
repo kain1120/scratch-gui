@@ -1,0 +1,12 @@
+# Test Steps
+sudo insmod toyfs.ko
+sudo mount -t toyfs none /mnt
+sudo touch /mnt/hello
+sudo cat /mnt/hello
+sudo echo "0" |sudo tee /mnt/hello
+sudo cat /mnt/hello
+sudo mkdir /mnt/hello_dir
+sudo ls /mnt/
+sudo umount -t toyfs /mnt
+sudo rmmod toyfs.ko
+sudo lsmod | grep toyfs
