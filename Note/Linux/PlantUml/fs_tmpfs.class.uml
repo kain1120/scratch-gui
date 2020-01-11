@@ -1,0 +1,136 @@
+@startuml
+interface file_system_type {
+	fs_supers
+}
+
+class shmem_fs_type {
+	name = "tmpfs"
+	--
+	.mount = shmem_mount
+    .kill_sb = kill_litter_super
+}
+
+
+file_systems ()-- "0..*" file_system_type 
+file_system_type <|-- shmem_fs_type
+
+interface super_block {
+	s_dev
+	s_root
+}
+
+class shmem_super_block <no code name> 
+
+super_blocks ()-- "0..*" super_block
+file_system_type "1" o-- "0..*" super_block
+super_block <|-- shmem_super_block
+
+shmem_fs_type -- super_block : create when mount >
+
+class dev_t << (D, orchid) >>
+super_block -- dev_t : s_dev
+
+class shmem_sb_info
+shmem_super_block -- shmem_sb_info : s_fs_info
+
+class shmem_ops {
+    .alloc_inode = shmem_alloc_inode
+    .free_inode = shmem_free_in_core_inode
+    .destroy_inode = shmem_destroy_inode
+    .statfs = shmem_statfs
+    .remount_fs = shmem_remount_fs
+    .show_options = shmem_show_options
+    .evict_inode = shmem_evict_inode
+    .drop_inode = generic_delete_inode
+    .put_super = shmem_put_super
+}
+shmem_super_block -- shmem_ops : s_op
+
+class shmem_export_ops {
+	.get_parent = shmem_get_parent
+	.encode_fh = shmem_encode_fh
+	.fh_to_dentry = shmem_fh_to_dentry
+}
+shmem_super_block -- shmem_export_ops : s_export_op
+
+interface inode
+class shmem_inode_reg < no code name >
+class shmem_inode_dir < no code name >
+
+inode <|-- shmem_inode_reg
+inode <|-- shmem_inode_dir
+super_block "1" -- "1..*" inode : s_root
+shmem_ops -- shmem_inode_reg : alloc_inode >
+shmem_ops -- shmem_inode_dir : alloc_inode >
+
+class address_space
+shmem_inode_reg -- address_space : i_mapping
+
+class shmem_aops {
+    .writepage = shmem_writepage
+    .set_page_dirty = __set_page_dirty_no_writeback
+    .write_begin = shmem_write_begin
+    .write_end = shmem_write_end
+    .migratepage = migrate_page
+    .error_remove_page = generic_error_remove_page
+}
+
+address_space -- shmem_aops : a_ops
+
+class shmem_inode_operations {
+    .getattr = shmem_getattr
+    .setattr = shmem_setattr
+    .listxattr = shmem_listxattr
+    .set_acl = simple_set_acl
+}
+
+shmem_inode_reg -- shmem_inode_operations : i_op
+
+class shmem_file_operations {
+    .mmap = shmem_mmap
+    .get_unmapped_area = shmem_get_unmapped_area
+    .llseek = shmem_file_llseek
+    .read_iter = shmem_file_read_iter
+    .write_iter = generic_file_write_iter
+    .fsync = noop_fsync
+    .splice_read = generic_file_splice_read
+    .splice_write = iter_file_splice_write
+    .fallocate = shmem_fallocate
+}
+
+shmem_inode_reg -- shmem_file_operations : i_fop
+
+class shmem_dir_inode_operations {
+    .create = shmem_create
+    .lookup = simple_lookup
+    .link = shmem_link
+    .unlink = shmem_unlink
+    .symlink = shmem_symlink
+    .mkdir = shmem_mkdir
+    .rmdir = shmem_rmdir
+    .mknod = shmem_mknod
+    .rename = shmem_rename2
+    .tmpfile = shmem_tmpfile
+    .listxattr = shmem_listxattr
+    .setattr = shmem_setattr
+    .set_acl = simple_set_acl
+}
+
+shmem_inode_dir -- shmem_dir_inode_operations : i_op
+
+class simple_dir_operations {
+    .open = dcache_dir_open
+    .release = dcache_dir_close
+    .llseek = dcache_dir_lseek
+    .read = generic_read_dir
+    .iterate_shared = dcache_readdir
+    .fsync = noop_fsync
+}
+
+shmem_inode_dir -- simple_dir_operations : i_fop
+
+class shmem_inode_info
+shmem_inode_info -- inode : vfs_inode
+shmem_inode_cachep ()-- "N" shmem_inode_info : alloc 
+
+@enduml
