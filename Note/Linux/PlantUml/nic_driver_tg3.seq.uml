@@ -1,0 +1,432 @@
+@startuml
+entity nic_card
+actor tg3_driver
+control net 
+control pci
+collections kernel
+collections user_space 
+== register ==
+tg3_driver ->o pci : pci_register_driver 
+note left of pci
+tg3_driver : pci_driver
+'.name = "tg3"
+'.id_table = tg3_pci_tbl
+'.proble   = tg3_init_one
+'.remove   = tg3_remove_one
+'.err_handler = tg3_err_handler
+'.suspend  = tg3_suspend
+'.resume   = tg3_resume
+'.shutdown = tg3_shutdown
+end note
+pci ->o kernel : driver_register
+note left of kernel
+:device_driver
+bus_type = pci_bus_type
+end note
+kernel -> user_space : kobject_uevent(KOBJ_ADD)
+== probe ==
+nic_card -> kernel : some trigger 
+ref over kernel, pci, user_space
+    driver_attach 
+    see <TODO>
+end ref
+pci-> tg3_driver : tg3_init_one 
+== init ==
+tg3_driver -> pci : pci_enable_device 
+tg3_driver -> pci : pci_request_regions
+tg3_driver -> pci : pci_set_master
+tg3_driver -> net : alloc_netdev_mqs 
+activate net 
+net -> net : alloc netdev<etherdev> 
+return
+
+group init device private data
+tg3_driver -> tg3_driver : reset_task = tg3_reset_task
+note right 
+reset_task is a work in workqueue
+end note
+tg3_driver -> pci : pci_ioremap_bar -> regs,aperegs
+tg3_driver -> tg3_driver : ... 
+end
+
+group init net_device
+tg3_driver -> tg3_driver : ethtool_ops = tg3_ethtool_ops
+tg3_driver -> tg3_driver : netdev_ops = tg3_netdev_ops
+tg3_driver -> tg3_driver : irq = pci_dev->irq 
+tg3_driver -> tg3_driver : ... 
+end
+
+group tg3_get_invariants
+tg3_driver -> nic_card : operate PCI_CMD 
+note over tg3_driver
+PCI_CMD contains basic device information
+end note
+tg3_driver -> nic_card : operate TG3PCI_MISC_HOST_CTRL 
+tg3_driver -> nic_card : tg3_detect_asic_rev
+loop vendors and devices
+tg3_driver -> pci : pci_get_device 
+end
+tg3_driver -> tg3_driver : determine TSO capabilities 
+tg3_driver -> tg3_driver : setup interrupt capabilities
+note left
+e.g. MSI/MSIX, irq_max, 
+txq_max, rxq_max, dma_limit, ...
+end note
+tg3_driver -> nic_card : setup pcie/pcix capabilities 
+note left
+e.g. linkctl, pcix_cap, 
+pm_cap, SERR#/PERR#, 
+cache_line, latency_timer, ...
+end note
+tg3_driver -> tg3_driver : fast path register access methods 
+note left
+e.g. read32, write32, 
+read32_mbox,...
+end note
+tg3_driver -> nic_card : enable memory arbiter 
+tg3_driver -> nic_card : tg3_get_eeprom_hw_cfg 
+tg3_driver -> tg3_driver : tg3_pwrsrc_switch_to_vmain
+tg3_driver -> tg3_driver : setup mac/phy capabilities
+note left
+e.g. grc_local_ctrl, JUMBO_RING_ENABLE,
+WOL_SPPED_XXX, phy_flags, phy_otp 
+coalesce_mode, USE_PHYLIB,
+APE, MAC_MODE
+end note
+note left
+APE: what is it? 
+end note
+group tg3_mdio_init
+note over tg3_driver
+mdio: Mangement Data Input/Output
+end note
+tg3_driver -> nic_card : get phy_addr 
+tg3_driver -> nic_card : tg3_mdio_start 
+tg3_driver -> kernel : mdiobus_alloc
+tg3_driver -> tg3_driver : init mdio_bus
+note over tg3_driver
+read = tg3_mdio_read
+write = tg3_mdio_wirte
+others...
+end note
+tg3_driver -> nic_card : tg3_bmcr_reset 
+tg3_driver ->o kernel : mdiobus_register 
+tg3_driver -> kernel : mdiobus_get_phy
+tg3_driver -> tg3_driver : init phy_dev 
+tg3_driver -> nic_card : tg3_mdio_config_5785
+end
+tg3_driver -> nic_card : init grc mode 
+tg3_driver -> nic_card : tg3_switch_clocks
+tg3_driver -> nic_card : test SRAM 
+tg3_driver -> nic_card : tg3_nvram_init
+tg3_driver -> nic_card : grc misc config 
+tg3_driver -> nic_card : perservce mac_mode 
+tg3_driver -> tg3_driver : tg3_phy_probe
+group tg3_read_vpd
+note over tg3_driver
+vpd : vital product data
+end note
+tg3_driver -> nic_card : tg3_vpd_readblock 
+tg3_driver -> pci : pci_vpd_find_tag
+tg3_driver -> pci : pci_vpd_find_info_keyword
+tg3_driver -> tg3_driver : copy board_part_number 
+end
+tg3_driver -> tg3_driver : tg3_read_fw_ver
+end
+
+tg3_driver -> pci : pci_set_dma_mask
+tg3_driver -> pci : pci_set_consistent_dma_mask
+
+tg3_driver -> tg3_driver : tg3_init_bufmgr_config 
+tg3_driver -> tg3_driver : configure net_device: some features, flags
+tg3_driver -> nic_card : tg3_get_device_address<mac> 
+tg3_driver -> nic_card : init napis: iintmbx,rcvmbx,sndmbx 
+note left 
+configure mailbox registers
+end note
+tg3_driver -> nic_card : reset chip  
+tg3_driver -> tg3_driver : tg3_test_dma 
+tg3_driver -> tg3_driver : tg3_init_coal 
+
+tg3_driver -> pci : pci_set_drvdata
+note left of pci 
+add net_device into pci_dev
+end note
+
+group tg3_timer_init
+tg3_driver ->o kernel : timer_setup(tg3_timer)
+end 
+
+group tg3_carrier_off
+tg3_driver -> net : netif_carrier_off 
+end
+
+tg3_driver -> net : register_netdev 
+
+group tg3_ptp_init
+tg3_driver ->o kernel: ptp_clock_register(tg3_ptp_caps) 
+end
+
+tg3_driver -> pci : pci_save_state
+
+== open ==
+net -> tg3_driver : ndo_open = tg3_open
+
+group load firmware
+tg3_driver -> kernel : request_firmware
+end 
+
+group tg3_carrier_off
+tg3_driver -> net : netif_carrier_off 
+end
+
+group power up
+tg3_driver -> nic_card : enable register access
+tg3_driver -> pci : pci_set_power_state
+tg3_driver -> nic_card : tg3_pwrsrc_switch_to_vmain 
+end
+
+tg3_driver -> tg3_driver : shutdown all tg3 driver elsewhere
+tg3_driver -> nic_card : tg3_disable_ints 
+
+group tg3_start
+
+group tg3_ints_init
+tg3_driver -> nic_card : setup msi mode
+tg3_driver -> tg3_driver : config irq vec
+tg3_driver -> net : netif_set_real_num_tx_queues
+tg3_driver -> net : netif_set_real_num_rx_queues
+end
+
+group tg3_rss_check_indir_tbl 
+tg3_driver -> tg3_driver : reset rss_ind_tbl
+tg3_driver -> net : ethtool_rxfh_indir_default 
+end
+
+group tg3_alloc_consistent
+tg3_driver -> kernel : dma_alloc_coherent -> hw_stats
+loop napi
+tg3_driver -> kernel : dma_alloc_coherent -> hw_status
+tg3_driver -> tg3_driver : ajust rx_rcb_prod_idx 
+end 
+tg3_driver -> kernel : tg3_mem_tx_acquire 
+tg3_driver -> kernel : tg3_mem_rx_acquire 
+end
+
+group tg3_napi_init
+loop napi
+alt 1st 
+tg3_driver -> net : netif_napi_add(tg3_poll)
+else
+tg3_driver -> net : netif_napi_add(tg3_poll_msix)
+end 
+end
+end
+
+group tg3_napi_init
+loop napi
+tg3_driver -> net : napi_enable
+end
+end
+
+loop irq_vec 
+tg3_driver -> kernel : request_irq
+note over tg3_driver 
+the irq fn can be: 
+tg3_msi
+tg3_msi_1shot
+tg3_interrupt
+tg3_interrupt_tagged
+end note
+end
+
+group tg3_init_hw
+tg3_driver -> nic_card : tg3_enable_register_access
+tg3_driver -> nic_card : tg3_poll_fw
+tg3_driver -> nic_card : tg3_switch_clocks
+tg3_driver -> nic_card : reset TG3PCI_MEM_WIN_BASE_ADDR
+
+group tg3_reset_hw
+tg3_driver -> nic_card : tg3_disable_ints 
+tg3_driver -> nic_card : tg3_stop_fw
+tg3_driver -> nic_card : tg3_write_sig_pre_reset
+tg3_driver -> nic_card : tg3_setup_eee 
+tg3_driver -> nic_card : tg3_phy_reset 
+tg3_driver -> nic_card : tg3_chip_reset 
+tg3_driver -> nic_card : tg3_write_sig_legacy 
+tg3_driver -> nic_card : handle special chip_rev 
+tg3_driver -> nic_card : handle special asic_rev 
+tg3_driver -> nic_card : handle GRC_MODE, PCISTATE, CLOCK_CTRL, APE, ... 
+tg3_driver -> nic_card : tg3_init_rings 
+tg3_driver -> nic_card : tg3_setup_rxbd_thresholds
+tg3_driver -> nic_card : ...
+tg3_driver -> nic_card : __tg3_set_coalesce 
+tg3_driver -> nic_card : __tg3_set_rx_mode 
+tg3_driver -> nic_card : ...
+tg3_driver -> nic_card : tg3_write_sig_post_reset
+end
+end
+
+tg3_driver -> nic_card : tg3_test_msi
+
+group tg3_phy_start
+tg3_driver -> net : mdiobus_get_phy
+tg3_driver -> net : phy_start 
+tg3_driver -> net : phy_start_aneg
+end
+
+group tg3_hwmon_open
+tg3_driver -> nic_card : tg3_sd_scan_scratchpad
+tg3_driver -> kernel : hwmon_device_register_with_groups
+end
+
+tg3_driver -> kernel : tg3_timer_start
+tg3_driver -> nic_card : tg3_enable_ints 
+tg3_driver -> nic_card : tg3_ptp_resume
+tg3_driver -> net : netif_tx_start_all_queues
+
+end
+== transmit ==
+net -> tg3_driver : ndo_start_xmit = tg3_start_xmit
+
+tg3_driver -> tg3_driver : get queue and napi
+tg3_driver -> tg3_driver : budget check 
+group prepare gso
+tg3_driver -> tg3_driver : prepare gso 
+end 
+tg3_driver -> tg3_driver : prepare jumbo 
+tg3_driver -> tg3_driver : prepare vlan tag 
+tg3_driver -> tg3_driver : require HWTSTAMP 
+
+group prepare dma
+
+group prepare dma for head
+tg3_driver -> pci : pci_map_single -> tx_buffers[entry]
+group tg3_tx_frag_set
+loop fragmented due to dma_limit
+tg3_driver -> tg3_driver : tg3_tx_set_bd -> tx_ring[entry]
+end loop
+end
+end
+
+group prepare dma for additional data fragments
+loop frags
+tg3_driver -> kernel : skb_frag_dma_map -> tx_buffers[entry] 
+group tg3_tx_frag_set
+loop fragmented due to dma_limit
+tg3_driver -> tg3_driver : tg3_tx_set_bd -> tx_ring[entry]
+end loop
+end
+end loop
+end
+
+end
+
+group handle would hit hwbug
+tg3_driver -> tg3_driver : tg3_tx_skb_unmap
+alt gso case
+tg3_driver -> tg3_driver : tg3_tso_bug
+note left 
+it's tso in driver
+end note
+else
+tg3_driver -> tg3_driver : silently drop if no workaround
+end alt
+end
+
+tg3_driver -> kernel : skb_tx_timestamp
+tg3_driver -> net : netdev_tx_sent_queue
+
+tg3_driver -> nic_card : update Tx producer idx
+
+== interrupt(msi) ==
+nic_card -> kernel : irq 
+kernel -> tg3_driver : tg3_msi
+tg3_driver -> nic_card : prefetch(hw_status, rx_rcb[])
+tg3_driver -> nic_card : clear interrupt pending events
+tg3_driver -> net : napi_schedule(napi->poll_list)
+net -> kernel : __raise_softirq_irqoff(NET_RX_SOFTIRQ)
+...
+kernel -> tg3_driver : poll = tg3_poll
+
+loop until no more work or reach budget 
+tg3_driver -> nic_card : tg3_poll_link
+
+group tg3_poll_work 
+
+group tg3_tx
+note over tg3_driver
+to run TX completion thread
+end note
+tg3_driver -> net : netdev_get_tx_queue
+loop consume all
+tg3_driver -> tg3_driver : tg3_hwclock_to_timestamp -> skb
+tg3_driver -> pci : pci_unmap_single for head
+loop frags
+tg3_driver -> pci : pci_unmap_page for fragment 
+end loop
+tg3_driver -> net : dev_consume_skb_any
+end loop
+tg3_driver -> net : netdev_tx_completed_queue
+alt tx_queue stopped 
+tg3_driver -> net : netif_tx_wake_queue
+net -> kernel : __raise_softirq_irqoff(NET_TX_SOFTIRQ)
+end alt
+end
+
+group tg3_rx
+note over tg3_driver
+to run RX thread
+end note
+loop consume all or reach budget 
+tg3_driver -> kernel : dma_unmap_addr
+note over tg3_driver
+std packet or jumbo packet
+end note
+
+alt  len > TG3_RX_COPY_THRESH
+tg3_driver -> kernel : tg3_alloc_rx_data
+tg3_driver -> pci : pci_unmap_single
+tg3_driver -> net : build_skb 
+tg3_driver -> net : skb_reserve 
+else len <= TG3_RX_COPY_THRESH
+tg3_driver -> tg3_driver : tg3_recycle_rx
+tg3_driver -> net : netdev_alloc_skb 
+tg3_driver -> net : skb_reserve 
+tg3_driver -> pci : pci_dma_sync_single_for_cpu 
+tg3_driver -> tg3_driver : memcpy data to skb
+tg3_driver -> pci : pci_dma_sync_single_for_device
+end alt 
+
+tg3_driver -> tg3_driver : tg3_hwclock_to_timestamp -> skb
+tg3_driver -> net : skb_checksum_none_assert
+tg3_driver -> net : eth_type_trans -> protocol 
+tg3_driver -> net : __vlan_hwaccel_put_tag
+tg3_driver -> net : napi_gro_receive
+note left 
+call napi_skb_finish and finally deliver_skb
+end note
+tg3_driver -> nic_card : get next packet 
+
+end loop
+
+tg3_driver -> nic_card : ack the status ring
+tg3_driver -> nic_card : refill RX ring
+
+end
+
+group handle RSS
+note over tg3_driver
+RSS: Receive side scaling
+enable efficient distribution
+of network receive across
+multiple CPUs
+end note
+tg3_driver -> tg3_driver : tg3_rx_prodring_xfer
+tg3_driver -> nic_card : reset rx mbox for std and jumbo packet
+end
+
+end 
+end loop
+
+@enduml
