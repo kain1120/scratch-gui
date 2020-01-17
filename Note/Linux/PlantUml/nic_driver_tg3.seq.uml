@@ -170,6 +170,7 @@ end
 tg3_driver -> pci : pci_save_state
 
 == open ==
+user_space -> net : open operation
 net -> tg3_driver : ndo_open = tg3_open
 
 group load firmware
@@ -428,5 +429,84 @@ end
 
 end 
 end loop
+
+== stop ==
+user_space -> net : stop operation
+net -> tg3_driver : ndo_stop = tg3_close
+
+group tg3_stop
+tg3_driver -> tg3_driver : tg3_reset_task_cancel
+
+group tg3_netif_stop
+tg3_driver -> net : netif_trans_update 
+tg3_driver -> tg3_driver : tg3_napi_disable
+tg3_driver -> net : netif_carrier_off
+tg3_driver -> net : netif_tx_disable
+end
+
+tg3_driver -> tg3_driver : tg3_timer_stop
+
+group tg3_hwmon_close
+tg3_driver -> kernel : hwmon_device_unregister 
+end
+
+group tg3_phy_stop
+tg3_driver -> net : phy_stop
+end
+
+tg3_driver -> nic_card : tg3_disable_ints
+
+group tg3_halt
+tg3_driver -> nic_card : tg3_stop_fw
+tg3_driver -> nic_card : tg3_write_sig_pre_reset
+tg3_driver -> nic_card : tg3_abort_fw
+tg3_driver -> nic_card : tg3_chip_reset
+tg3_driver -> nic_card : tg3_write_sig_legacy
+tg3_driver -> nic_card : tg3_write_sig_post_reset
+
+group save stats
+tg3_driver -> tg3_driver : tg3_get_nstats
+tg3_driver -> tg3_driver : tg3_get_estats
+tg3_driver -> tg3_driver : reset stats 
+end
+
+end 
+
+group tg3_free_rings
+loop irq_cnt
+tg3_driver -> pci : tg3_rx_prodring_free 
+loop tx.skb
+tg3_driver -> pci : tg3_tx_skb_unmap
+tg3_driver -> net : dev_consume_skb_any
+end loop
+tg3_driver -> net : netdev_tx_reset_queue
+end loop
+end
+
+loop irq_cnt
+tg3_driver -> kernel : free_irq
+end loop
+
+group tg3_ints_fini
+tg3_driver -> pci : pci_disable_msi(x)
+tg3_driver -> tg3_driver : clear flag
+end
+
+group tg3_napi_fini
+loop irq_cnt
+tg3_driver -> net : netif_napi_del 
+end loop
+end
+
+group tg3_free_consistent
+loop irq_cnt
+tg3_driver -> kernel : dma_free_coherent(hw_status) 
+end loop
+tg3_driver -> tg3_driver : tg3_mem_rx_release
+tg3_driver -> tg3_driver : tg3_mem_tx_release
+tg3_driver -> kernel : dma_free_coherent(hw_stats) 
+end
+
+end
 
 @enduml
