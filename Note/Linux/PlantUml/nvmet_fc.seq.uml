@@ -1,0 +1,617 @@
+@startuml
+control fc_driver
+actor nvmet_fc
+actor nvmet
+'actor nvme 
+control configfs 
+collections kernel
+collections user_space 
+== nvmet_init ==
+nvmet -> kernel : alloc_workqueue -> buffered_io_wq
+group nvmet_init_discovery
+nvmet -> nvmet : nvmet_subsys_alloc(NVME_NQN_DISC)
+note over nvmet
+kzalloc, ver, serial, type, subsysnqn, ref, lock,
+namespaces, ctrls, hosts
+end note
+group nvmet_init_configfs
+note over nvmet
+init nvmet_configfs_subsystem
+end note
+nvmet -> configfs : config_group_init(su_group)
+nvmet -> configfs : config_group_init_type_name
+nvmet -> configfs : configfs_add_default_group -> su_group
+note over nvmet
+"subsystems" -> nvmet_subsystems_type:
+.ct_group_ops = nvmet_subsystems_group_ops:
+    .make_group = nvmet_subsys_make
+
+"ports" -> nvmet_ports_type:
+.ct_group_ops = nvmet_ports_group_ops:
+    .make_group = nvmet_ports_make
+
+"hosts" -> nvmet_hosts_type:
+.ct_group_ops = nvmet_hosts_group_ops:
+    .make_group = nvmet_hosts_make_group
+end note
+nvmet -> configfs : configfs_register_subsystem
+end
+
+== nvmet_fc_init ==
+nvmet_fc ->o nvmet : nvmet_register_transport -> nvmet_transports[]
+note left of nvmet
+nvmet_fc_tgt_fcp_ops:
+.add_port        = nvmet_fc_add_port
+.remove_port     = nvmet_fc_remove_port
+.queue_response  = nvmet_fc_fcp_nvme_cmd_done
+.delete_ctrl     = nvmet_fc_delete_ctrl
+.discovery_chg   = nvmet_fc_discovery_chg
+end note
+
+== probe port ==
+kernel -> fc_driver : .probe = lpfc_pci_probe_one
+note over fc_driver
+use lpfc as example
+end note
+... other fc init ...
+
+group lpfc_create_shost
+fc_driver -> user_space : lpfc_create_shost
+end 
+
+group lpfc_nvmet_create_targetport
+fc_driver -> fc_driver : lpfc_nvmet_setup_io_context
+note over fc_driver
+MRQs, ctx_buf, iocbq, ...
+ctx_buf.defer_work = lpfc_nvmet_fcp_rqst_defer_work
+end note
+fc_driver -> fc_driver : prepare node name , port name, port_id
+fc_driver -> fc_driver : prepare lpfc_tgttemplate
+fc_driver ->o nvmet_fc : nvmet_fc_register_targetport \n-> nvmet_fc_target_list 
+
+note over fc_driver, nvmet_fc
+nvmet_fc_target_template = lpfc_tgttemplate:
+.targetport_delete = lpfc_nvmet_targetport_delete
+.xmt_ls_rsp     = lpfc_nvmet_xmt_ls_rsp
+.fcp_op         = lpfc_nvmet_xmt_fcp_op
+.fcp_abort      = lpfc_nvmet_xmt_fcp_abort
+.fcp_req_release = lpfc_nvmet_xmt_fcp_release
+.defer_rcv      = lpfc_nvmet_defer_rcv
+.discovery_event = lpfc_nvmet_discovery_event
+end note
+nvmet_fc -> nvmet_fc : nvmet_fc_alloc_ls_iodlist
+note over nvmet_fc
+iod->work = nvmet_fc_handle_ls_rqst_work
+end note
+end
+
+== configure nvmet port==
+note over nvmet
+configure transport for nvmet via
+creating a directory <port_name> under
+/sys/../nvmet/ports/
+end note
+user_space -> configfs : .mkdir = configfs_mkdir
+note over configfs 
+under "ports" directory
+end note
+configfs -> nvmet : .make_group = nvmet_ports_make
+
+group nvmet_ports_make
+nvmet -> nvmet : create nvmet_port -> nvmet_ports_list
+note over nvmet
+include ana_state, disc_addr, ana_default_group, ...
+end note
+
+nvmet -> configfs : config_group_init_type_name
+note over nvmet
+"<port_name>" -> nvmet_port_type:
+.ct_attrs = nvmet_port_attrs
+.ct_item_ops = nvmet_port_item_ops:
+    .release = nvmet_port_release
+
+"subsystems" -> nvmet_port_subsys_type:
+.ct_item_ops = nvmet_port_subsys_item_ops:
+    .allow_link = nvmet_port_subsys_allow_link
+    .drop_link = nvmet_port_subsys_drop_link
+end note
+
+nvmet -> configfs : config_group_init_type_name
+nvmet -> configfs : configfs_add_default_group -> "ports" 
+note over nvmet
+"referrals" -> nvmet_referrals_type:
+.ct_group_ops = nvmet_referral_group_ops:
+    .make_group = nvmet_referral_make
+
+"ana_groups" -> nvmet_ana_groups_type:
+.ct_group_ops = nvmet_ana_groups_group_ops:
+    .make_group = nvmet_ana_groups_make_group
+end note
+
+nvmet -> configfs : config_group_init_type_name
+nvmet -> configfs : configfs_add_default_group -> "ana_groups" 
+note over nvmet
+NVMET_DEFAULT_ANA_GRPID -> nvmet_ana_group_type:
+.ct_item_ops = nvmet_ana_group_item_ops:
+    .release = nvmet_ana_group_release
+end note
+
+end
+
+== configure subsystem access ==
+note over nvmet
+enable a port to access a subystem via
+creating a subsystem softlink under
+/sys/../nvmet/ports/<port_name>/subsystems/<subsystem_name>
+end note
+user_space -> configfs : .symlink = configfs_symlink
+configfs -> nvmet : .allow_link = nvmet_port_subsys_allow_link
+group nvmet_port_subsys_allow_link
+nvmet -> nvmet :  consistency check 
+
+alt 1st subsystem configured 
+group nvmet_enable_port
+nvmet -> nvmet_fc : get transport ops
+note left
+request_module if not exist
+end note
+
+nvmet -> nvmet_fc : .add_port = nvmet_fc_add_port 
+group nvmet_fc_add_port
+nvmet_fc -> nvmet_fc : nvme_fc_parse_traddr
+nvmet_fc -> nvmet_fc : alloc port entry
+nvmet_fc -> nvmet_fc : nvmet_fc_portentry_bind \n-> nvmet_fc_portentry_list 
+end
+
+end
+end alt
+
+group nvmet_port_disc_changed
+end
+
+end 
+
+== handle interrupt ==
+kernel -> fc_driver : lpfc_sli4_hba_intr_handler
+group lpfc_sli4_process_eq
+loop eqes
+group lpfc_sli4_handle_eqe
+
+fc_driver -> fc_driver : find fast path event
+
+alt no fast path event found 
+fc_driver -> kernel : queue_work_on(.spwork)
+note  over fc_driver
+.spwork = lpfc_sli4_sp_process_cq
+end note
+else found
+fc_driver -> kernel : queue_work_on(.irqwork)
+note  over fc_driver
+.irqwork = lpfc_sli4_hba_process_cq
+end note
+end alt
+end
+
+fc_driver -> fc_driver : __lpfc_sli4_consume_eq
+end loop
+end
+
+... some time later ...
+group fast path 
+kernel -> fc_driver : lpfc_sli4_hba_process_cq
+loop cqes
+fc_driver -> fc_driver : lpfc_sli4_fp_handle_cqe
+alt COMPL_WQE/NVME_ERSP
+alt LPFC_IO || LPFC_NVME_LS
+fc_driver -> fc_driver : lpfc_sli4_fp_handle_fcp_wcqe
+end alt
+else RELEASE_WQE
+fc_driver -> fc_driver : lpfc_sli4_fp_handle_rel_wcqe
+else XRI_ABORTED
+fc_driver -> fc_driver : lpfc_sli4_sp_handle_abort_xri_wcqe
+else RECEIVE
+alt LPFC_NVMET
+fc_driver -> fc_driver : lpfc_sli4_nvmet_handle_rcqe
+end alt
+end alt
+end loop
+
+alt have delay work
+fc_driver -> kernel : queue_delayed_work_on(sched_irqwork)
+note over fc_driver
+.sched_irqwork = lpfc_sli4_dly_hba_process_cq
+end note
+end alt
+end
+
+... or another some time later ...
+group slow path 
+kernel -> fc_driver : lpfc_sli4_sp_process_cq
+
+loop cqes
+alt LPFC_WCQ && LPFC_IO
+fc_driver -> fc_driver : lpfc_sli4_fp_handle_cqe
+else
+fc_driver -> fc_driver : lpfc_sli4_sp_handle_cqe
+
+alt !async
+fc_driver -> fc_driver : lpfc_sli4_sp_handle_mbox_event
+else
+fc_driver -> fc_driver : lpfc_sli4_sp_handle_async_event
+end alt
+end alt
+
+alt have delay work
+fc_driver -> kernel : queue_delayed_work_on(sched_spwork)
+note over fc_driver
+.sched_spwork = lpfc_sli4_dly_sp_process_cq
+end note
+end alt
+end loop
+end
+
+alt have post work
+fc_driver -> kernel : lpfc_worker_wake_up(work_waitq)
+end alt
+
+... some time later ...
+fc_driver -> fc_driver : lpfc_sli4_dly_hba_process_cq
+ref over fc_driver
+fast path handler
+end ref
+
+... or another some time later ...
+fc_driver -> fc_driver : lpfc_sli4_dly_sp_process_cq
+ref over fc_driver
+slow path handler
+end ref
+
+... at the same time ...
+group kernel_thread: lpfc_do_work
+loop until stop
+kernel -> fc_driver : wait_event_interruptible(work_waitq)
+
+group lpfc_work_done
+fc_driver -> fc_driver : lpfc_sli4_post_async_mbox 
+fc_driver -> fc_driver : lpfc_handle_eratt 
+fc_driver -> fc_driver : lpfc_sli_handle_mb_event
+fc_driver -> fc_driver : lpfc_handle_latt 
+fc_driver -> fc_driver : lpfc_handle_rrq_active
+fc_driver -> fc_driver : lpfc_sli4_els_xri_abort_event_proc
+fc_driver -> fc_driver : lpfc_sli4_async_event_proc
+fc_driver -> fc_driver : lpfc_sli4_hbqbuf_add_hbqs
+fc_driver -> fc_driver : lpfc_sli4_fcf_redisc_event_proc
+
+group work_port event
+fc_driver -> fc_driver : lpfc_create_vport_work_array 
+loop vports
+fc_driver -> fc_driver : lpfc_disc_timeout_handler 
+fc_driver -> fc_driver : lpfc_els_timeout_handler 
+fc_driver -> fc_driver : lpfc_hb_timeout_handler 
+fc_driver -> fc_driver : lpfc_mbox_timeout_handler 
+fc_driver -> fc_driver : lpfc_unblock_fabric_iocbs
+fc_driver -> fc_driver : lpfc_ramp_down_queue_handler
+fc_driver -> fc_driver : lpfc_delayed_disc_timeout_handler 
+end loop
+fc_driver -> fc_driver : lpfc_destroy_vport_work_array 
+end 
+
+group handle els ring
+fc_driver -> fc_driver : lpfc_phba_elsring
+fc_driver -> fc_driver : lpfc_sli_handle_slow_ring_event_s4 
+loop sp_queue_event
+alt COMPLE_WQE
+fc_driver -> fc_driver : lpfc_sli4_els_wcqe_to_rspiocbq
+fc_driver -> fc_driver : lpfc_sli_sp_handle_rspiocb
+else RECEIVE
+fc_driver -> fc_driver : lpfc_sli4_handle_received_buffer
+end alt
+end loop
+fc_driver -> fc_driver : lpfc_drain_txq
+fc_driver -> fc_driver : turn on ring interrupts 
+end
+fc_driver -> fc_driver : lpfc_work_list_done
+end loop
+end
+end
+
+
+== receive LS command ==
+fc_driver -> fc_driver : lpfc_sli4_handle_received_buffer
+fc_driver -> fc_driver : lpfc_sli4_send_seq_to_ulp
+fc_driver -> fc_driver : lpfc_complete_unsol_iocb 
+fc_driver -> fc_driver : .lpfc_sli_rcv_unsol_event
+note over fc_driver
+ELS_REQ: lpfc_els_unsol_event
+ELS_REP: lpfc_els_unsol_event
+DD_UNSOL_CTL: lpfc_ct_unsol_event (name server inquiry)
+DD_SOL_CTL: lpfc_ct_unsol_event (name server response)
+end note
+
+fc_driver -> fc_driver : lpfc_els_unsol_event 
+fc_driver -> fc_driver : lpfc_els_unsol_buffer
+alt FLOGI
+fc_driver -> fc_driver : lpfc_els_rcv_flogi
+else PLOGI
+fc_driver -> fc_driver : lpfc_plogi_confirm_nport -> ndlp
+fc_driver -> fc_driver : lpfc_send_els_event(ndlp)
+fc_driver -> fc_driver : lpfc_disc_state_machine(NLP_EVT_RCV_PLOGI)
+else PRLI or NVMEPRLI
+fc_driver -> fc_driver : lpfc_disc_state_machine(NLP_EVT_RCV_PRLI)
+else RSCN 
+fc_driver -> fc_driver : lpfc_els_rcv_rscn
+else others
+note over fc_driver
+include:
+LOGO PRLO LCB RDP ADISC PDISC FARPR FARP
+FAN LIRR RLS RPS RPL RNID RTV RRQ ECHO REC FPIN
+end note
+end alt
+
+== receive NVME PRLI command ==
+fc_driver -> fc_driver : lpfc_disc_state_machine(NLP_EVT_RCV_PRLI)
+alt UNSED_NODE state 
+fc_driver -> fc_driver : lpfc_rcv_els_unused_node
+else PLOGI_ISSUE state
+fc_driver -> fc_driver : lpfc_rcv_prli_plogi_issue
+else ADISC_ISSUE state
+fc_driver -> fc_driver : lpfc_rcv_prli_adisc_issue
+else REG_LOGIN_ISSUE state
+fc_driver -> fc_driver : lpfc_rcv_prli_relogin_issue
+else PRLI_ISSUE state
+fc_driver -> fc_driver : lpfc_rcv_prli_prli_issue
+else LOGO_ISSUE state
+fc_driver -> fc_driver : lpfc_rcv_prli_logo_issue
+else UNMAPPED_NODE state
+group lpfc_rcv_prli_unmap_node
+fc_driver -> fc_driver : lpfc_rcv_prli_support_check
+fc_driver -> fc_driver : lpfc_rcv_prli
+fc_driver -> fc_driver : lpfc_els_rsp_prli_acc
+end 
+else MAPPED_NODE state
+fc_driver -> fc_driver : lpfc_rcv_prli_mapped_node
+else NPR_NODE state
+fc_driver -> fc_driver : lpfc_rcv_prli_npr_node
+end alt
+
+
+== receive NVME LS command ==
+fc_driver -> fc_driver : lpfc_sli4_handle_received_buffer
+fc_driver -> fc_driver : lpfc_sli4_send_seq_to_ulp
+fc_driver -> fc_driver : lpfc_complete_unsol_iocb 
+fc_driver -> fc_driver : lpfc_nvmet_unsol_ls_event
+note over fc_driver
+FC_TYPE_NVME branch
+end note
+fc_driver -> nvmet_fc : nvmet_fc_rcv_ls_req
+nvmet_fc -> kernel : schedule_work(iod->work)
+note over nvmet_fc
+iod->work = nvmet_fc_handle_ls_rqst_work
+end note
+fc_driver -> fc_driver : .lpfc_sli_rcv_unsol_event \n= 
+
+... some time later ...
+
+kernel -> nvmet_fc : .work=nvmet_fc_handle_ls_rqst_work
+nvmet_fc -> nvmet_fc : nvmet_fc_handle_ls_rqst
+
+alt LS_CREATE_ASSOCIATION
+group nvmet_fc_ls_create_association
+nvmet_fc -> nvmet_fc : nvmet_fc_alloc_target_assoc
+note over nvmet_fc
+alloc/init nvmet_fc_tgt_assoc:
+.del_work = nvmet_fc_delete_assoc
+association_id
+end note
+
+group nvmet_fc_alloc_target_queue
+nvmet_fc -> nvmet_fc : alloc target queue
+note over nvmet_fc
+alloc/init nvmet_fc_tgt_queue:
+.work_q = "ntfc%d.%d.%d"
+end note
+nvmet_fc -> nvmet_fc : nvmet_fc_prep_fcp_iodlist
+nvmet_fc -> nvmet : nvmet_sq_init
+end
+
+nvmet_fc -> nvmet_fc : nvmet_fc_format_rsp_hdr
+nvmet_fc -> nvmet_fc : prepare rsp's associd/connectid 
+end
+
+else LS_CREATE_CONNECTION
+group nvmet_fc_ls_create_connection
+nvmet_fc -> nvmet_fc : nvmet_fc_find_target_assoc
+nvmet_fc -> nvmet_fc : nvmet_fc_alloc_target_queue
+nvmet_fc -> nvmet_fc : nvmet_fc_format_rsp_hdr
+nvmet_fc -> nvmet_fc : prepare rsp's connectid 
+end
+
+else LS_DISCONNECT
+group nvmet_fc_ls_disconnect
+nvmet_fc -> nvmet_fc : nvmet_fc_find_target_assoc
+nvmet_fc -> nvmet_fc : nvmet_fc_format_rsp_hdr
+group nvmet_fc_delete_assoc
+loop queues
+nvmet_fc -> nvmet_fc : nvmet_fc_delete_target_queue
+end loop
+end
+end
+end alt
+
+group nvmet_fc_xmt_ls_rsp
+nvmet_fc -> nvmet_fc : fc_dma_sync_single_for_device 
+nvmet_fc -> fc_driver : .xmt_ls_rsp = lpfc_nvmet_xmt_ls_rsp
+fc_driver -> fc_driver : lpfc_nvmet_prep_ls_wqe
+fc_driver -> fc_driver : nvmewqeq->wqe_cmpl = lpfc_nvmet_xmt_ls_rsp_cmp
+fc_driver -> fc_driver : lpfc_sli4_issue_wqe
+nvmet_fc -> nvmet_fc : nvmet_fc_xmt_ls_rsp_done
+end
+
+group complete response 
+ref over fc_driver, nvmet_fc : handle interrupt
+note over fc_driver, nvmet_fc
+call .wqe_cmpl = lpfc_nvmet_xmt_ls_rsp_cmp at last
+end note
+end ref
+end
+
+== receive NVME's FCP command ==
+fc_driver -> fc_driver : lpfc_sli4_nvmet_handle_rcqe
+group lpfc_nvmet_unsol_fcp_event
+fc_driver -> fc_driver : lpfc_get_ctx_list
+alt load is OK
+group lpfc_nvmet_process_rcv_fcp_req
+fc_driver -> nvmet_fc : nvmet_fc_rcv_fcp_req
+group nvmet_fc_rcv_fcp_req
+nvmet_fc -> nvmet_fc : nvmet_fc_find_target_queue
+nvmet_fc -> nvmet_fc : nvmet_fc_alloc_fcp_iod
+nvmet_fc -> nvmet_fc : memcpy cmdiubuf 
+nvmet_fc -> nvmet_fc : nvmet_fc_queue_fcp_req
+group nvmet_fc_handle_fcp_rqst
+nvmet_fc -> nvmet_fc : set fod->fcpreq->done 
+note over nvmet_fc
+.fcpreq->done = nvmet_fc_xmt_fcp_op_done
+end note
+
+nvmet_fc -> nvmet : nvmet_req_init
+group nvmet_req_init
+alt !req->sq->ctrl
+nvmet -> nvmet : nvmet_parse_connect_cmd
+note over nvmet
+req->execute = nvmet_execute_admin_connect or
+req->execute = nvmet_execute_io_connect
+end note
+else req->sq_qid != 0
+nvmet -> nvmet : nvmet_parse_io_cmd
+group nvmet_parse_io_cmd
+nvmet -> nvmet : nvmet_check_ctrl_status
+nvmet -> nvmet : nvmet_find_namespace
+nvmet -> nvmet : nvmet_check_ana_state
+nvmet -> nvmet : nvmet_io_cmd_check_access
+alt file command
+nvmet -> nvmet : nvmet_file_prase_io_cmd
+note over nvmet
+req->execute = nvmet_file_execute_rw or
+req->execute = nvmet_file_execute_flush or
+req->execute = nvmet_file_execute_dsm or
+req->execute = nvmet_file_execute_write_zeroes
+end note
+else
+nvmet -> nvmet : nvmet_bdev_prase_io_cmd
+note over nvmet
+req->execute = nvmet_bdev_execute_rw or
+req->execute = nvmet_bdev_execute_flush or
+req->execute = nvmet_bdev_execute_dsm or
+req->execute = nvmet_bdev_execute_write_zeroes
+end note
+end alt
+end
+else fabrics command
+nvmet -> nvmet : nvmet_parse_fabrics_cmd
+note over nvmet
+req->execute = nvmet_execute_prop_set or
+req->execute = nvmet_execute_prop_get
+end note
+else NVME_NQN_DISC
+nvmet -> nvmet : nvmet_parse_discovery_cmd
+note over nvmet
+req->execute = nvmet_execute_disc_set_features or
+req->execute = nvmet_execute_disc_get_features or
+req->execute = nvmet_execute_async_event or
+req->execute = nvmet_execute_keep_alive or
+req->execute = nvmet_execute_get_disc_log_page or
+req->execute = nvmet_execute_identify_disc_ctrl
+end note
+else others
+nvmet -> nvmet : nvmet_parse_admin_cmd
+note over nvmet
+req->execute = nvmet_execute_get_log_page_error or
+req->execute = nvmet_execute_get_log_page_smart or
+req->execute = nvmet_execute_get_log_page_noop or
+req->execute = nvmet_execute_get_log_changed_ns or
+req->execute = nvmet_execute_get_log_cmd_effects_ns or
+req->execute = nvmet_execute_get_log_page_ana or
+req->execute = nvmet_execute_identify_ns or
+req->execute = nvmet_execute_identify_ctrl or
+req->execute = nvmet_execute_identify_nslist or
+req->execute = nvmet_execute_identify_desclist or
+req->execute = nvmet_execute_abort or
+req->execute = nvmet_execute_set_features or
+req->execute = nvmet_execute_get_features or
+req->execute = nvmet_execute_async_event or
+req->execute = nvmet_execute_keep_alive
+end note
+end alt
+end
+
+nvmet_fc -> nvmet_fc : nvmet_fc_alloc_tgt_pgs
+nvmet_fc -> nvmet_fc : nvmet_fc_transfer_fcp_data
+
+nvmet_fc -> nvmet : nvmet_req_execute
+group nvmet_req_execute
+nvmet -> nvmet : .execute
+note over nvmet
+see execute in nvmet_req_init
+end note
+end 
+
+end
+end
+end
+else
+fc_driver -> kernel : queue_work(.defer_work)
+note over fc_driver
+.defer_work = lpfc_nvmet_fcp_rqst_defer_work
+end note
+... some time later ...
+fc_driver -> fc_driver : lpfc_nvmet_fcp_rqst_defer_work
+ref over fc_driver
+nvmet_fc_rcv_fcp_req
+end ref
+end alt
+end
+
+== execute bdev read command ==
+nvmet_fc -> nvmet : nvmet_req_execute
+nvmet -> nvmet : nvmet_bdev_execute_rw 
+nvmet -> kernel : bio_init or bio_alloc
+nvmet -> nvmet : config bio
+note over nvmet
+.bi_end_io = nvmet_bio_done
+end note
+loop each sg
+nvmet -> kernel : bio_chain
+end loop
+nvmet -> kernel : submit_bio 
+... some time later ...
+kernel -> nvmet : nvmet_bio_done
+nvmet -> nvmet : nvmet_req_complete
+nvmet -> nvmet_fc : .queue_response
+note over nvmet, nvmet_fc
+.queue_response  = nvmet_fc_fcp_nvme_cmd_done
+end note
+nvmet_fc -> nvmet_fc : nvmet_fc_transfer_fcp_data
+nvmet_fc -> nvmet_fc : nvmet_fc_free_tgt_pgs
+nvmet_fc -> nvmet_fc : nvmet_fc_xmt_fcp_rsp
+nvmet_fc -> fc_driver : .fcp_op
+note over nvmet, nvmet_fc
+.fcp_op = lpfc_nvmet_xmt_fcp_op
+end note
+fc_driver -> fc_driver : lpfc_nvmet_prep_fcp_wqe -> nvmewqeq
+fc_driver -> fc_driver : lpfc_sli4_issue_wqe(nvmewqeq)
+
+
+== nvmet_fc_exit ==
+nvmet_fc ->x nvmet : nvmet_unregister_transport 
+nvmet_fc -> kernel : ida_destroy(nvmet_fc_tgtport_cnt)
+
+== nvmet_exit ==
+group nvmet_exit_configfs
+end
+group nvmet_exit_discovery
+end
+nvmet -> kernel : ida_destroy(cntlid_ida)
+nvmet -> kernel : destroy_workqueue
+
+@enduml
+
