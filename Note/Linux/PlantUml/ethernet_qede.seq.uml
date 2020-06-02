@@ -1,0 +1,462 @@
+@startuml
+actor qede
+actor qed
+control pci
+control net
+collections kernel
+== module init ==
+qede ->o net : register_netdevice_notifier
+qede ->o pci : pci_register_driver
+== probe ==
+pci -> qede : probe
+qede -> qed : probe
+activate qed
+qed -> qed : qed_alloc_cdev
+qed -> qed : qed_init_pci
+activate qed
+qed -> pci : pci_enable_device
+qed -> pci : pci_request_regions
+qed -> pci : pci_read_config_byte(PCI_REVISION_ID)
+qed -> pci : pci_find_capability(PCI_CAP_ID_PM)
+qed -> qed : qed_set_coherency_mask
+activate qed
+qed -> kernel : dma_set_mask
+qed -> kernel : dma_set_coherent_mask
+return
+loop bar1 and doolbell
+qed -> pci : pci_resource_start
+qed -> pci : pci_resource_end
+qed -> pci : pci_ioremap_bar/ioremap_wc
+end loop
+return
+qed -> qed : qed_devlink_register
+activate qed
+qed -> kernel : devlink_alloc
+qed -> kernel : devlink_register
+qed -> kernel : devlink_params_register
+qed -> kernel : devlink_param_driverinit_value_set
+qed -> kernel : devlink_params_publish
+return
+qed -> qed : qed_hw_prepare
+activate qed 
+loop hwfn
+qed -> qed : qed_hw_prepare_single
+activate qed
+qed -> qed : get_function_id
+qed -> qed : qed_ptt_pool_alloc
+qed -> qed : qed_get_reserved_ptt
+qed -> qed : qed_get_dev_info
+qed -> qed : qed_hw_hwfn_prepare
+activate qed
+qed -> qed : "clear indirect access"
+qed -> qed : "clean pglue_b errors"
+qed -> qed : "enable internal target-read"
+return
+qed -> qed : qed_mcp_cmd_init
+qed -> qed : qed_get_hw_info
+activate qed
+qed -> qed : qed_hw_info_port_num
+qed -> qed : qed_mcp_get_capabilities
+qed -> qed : qed_hw_get_nvm_info
+qed -> qed : qed_int_igu_read_cam
+qed -> qed : ether_addr_copy
+qed -> qed : qed_mcp_cmd_port_init
+qed -> qed : qed_get_eee_caps
+qed -> qed : qed_mcp_read_ufp_config
+qed -> qed : qed_get_num_funcs
+qed -> qed : qed_hw_get_resc
+return
+qed -> qed : qed_mcp_initiate_pf_flr
+qed -> qed : qed_mcp_nvm_info_populate
+qed -> qed : qed_init_alloc
+return
+end loop
+return
+return
+qede -> qede : qede_update_pf_params
+activate qede
+qede -> qed : update_pf_params
+return
+qede -> qed : slowpath_start
+activate qed
+qed -> qed : qed_iov_wq_start
+qed -> qed : qed_slowpath_wq_start
+qed -> qed : request_firmware
+qed -> qed : qed_nic_setup
+activate qed
+qed -> qed : qed_resc_alloc
+activate qed
+alt vf
+qed -> qed : qed_l2_alloc
+end alt
+loop hwfn
+qed -> qed : qed_db_recovery_setup
+qed -> qed : qed_cxt_mngr_alloc
+qed -> qed : qed_cxt_set_pf_params
+qed -> qed : qed_alloc_qm_data
+qed -> qed : qed_init_qm_info
+qed -> qed : qed_cxt_cfg_ilt_compute
+qed -> qed : qed_cxt_tables_alloc
+qed -> qed : qed_spq_alloc
+qed -> qed : qed_int_alloc
+qed -> qed : qed_iov_alloc
+qed -> qed : qed_eq_alloc
+qed -> qed : qed_consq_alloc
+qed -> qed : qed_l2_alloc
+qed -> qed : qed_ll2_alloc
+qed -> qed : qed_dmae_info_alloc
+activate qed
+qed -> kernel : dma_alloc_coherent
+return
+qed -> qed : qed_dcbx_info_alloc
+qed -> qed : qed_dbg_alloc_user_data
+qed -> qed : qed_llh_alloc:pp_filters
+end loop
+return
+qed -> qed : qed_resc_setup
+activate qed
+loop hwfn
+qed -> qed : qed_cxt_mngr_setup
+qed -> qed : qed_spq_setup
+qed -> qed : qed_eq_setup
+qed -> qed : qed_consq_setup
+qed -> qed : qed_mcp_read_mb
+qed -> qed : qed_int_setup
+qed -> qed : qed_l2_setup
+qed -> qed : qed_iov_setup
+qed -> qed : qed_ll2_setup
+end loop
+return
+return
+qed -> qed : qed_slowpath_setup_int
+qed -> qed : qed_alloc_stream_mem
+qed -> qed : qed_hw_init
+activate qed
+qed -> qed : qed_init_fw_data
+loop hwfn
+qed -> qed : qed_calc_hw_mode
+qed -> qed : qed_fill_load_req_params
+qed -> qed : qed_mcp_load_req
+qed -> qed : qed_mcp_set_capabilities
+qed -> qed : qed_reset_mb_shadow
+qed -> qed : qed_pglueb_rbc_attn_handler
+qed -> qed : qed_pglueb_set_pfid_enable
+qed -> qed : qed_pglueb_clear_err
+alt load_code = LOAD_ENGINE
+qed -> qed : qed_hw_init_common
+else load_code = LOAD_PORT
+qed -> qed : qed_hw_init_port
+else load_code = LOAD_FUNCTION
+qed -> qed : qed_hw_init_pf
+end alt
+qed -> qed : qed_mcp_load_done
+end loop
+return
+qed -> qed : qed_ll2_alloc_if
+qed -> qed : qed_mcp_send_drv_version
+qed -> qed : qed_reset_vport_stats
+return
+qede -> qed : fill_dev_info
+qede -> qede : qede_alloc_etherdev
+activate qede
+qede ->o net : alloc_etherdev_mqs
+qede -> qede : "prepare qede_dev" 
+return
+qede -> qede : qede_init_ndev
+qede -> qede : qede_rdma_dev_add
+qede -> qede : INIT_DELAYED_WORK(qede_sp_task)
+qede -> net : register_netdev
+qede -> qed : set_name
+qede -> qede : qede_ptp_enale
+qede -> qed : register_ops
+qede -> qede : qede_set_dcbnl_ops
+qede -> qede : qede_log_probe
+== ndo open (ifconfig xxx up) ==
+qede -> net : netif_carrier_off
+qede -> qed : set_power_state
+qede -> qede : qede_load
+activate qede
+qede -> qede : qede_set_num_queues
+activate qede 
+qede -> net : netif_get_num_default_rss_queues
+qede -> qede : "calculate rss number"
+qede -> qed : set_fp_int
+return
+qede -> qede : qede_alloc_fp_array
+qede -> qede : qede_init_fp
+qede -> qede : qede_alloc_mem_load
+qede -> qede : qede_set_real_num_queues
+activate qede
+qede -> net : netif_set_real_num_tx_queues
+qede -> net : netif_set_real_num_rx_queues
+return
+qede -> qede : qede_alloc_arfs
+qede -> qede : qede_napi_add_enable
+activate qede
+loop queues
+qede -> net : netif_napi_add(qede_poll)
+qede -> net : napi_enble
+end
+return
+qede -> qede : qede_setup_irqs
+activate qede
+qede -> qed : get_fp_int
+qede -> qede : qede_req_msix_irqs
+activate qede
+loop queues
+alt RFS_ACCEL
+qede -> kernel : irq_cpu_rmap_add
+end
+qede -> kernel : request_irq(qede_msix_fp_int)
+end
+return
+return
+qede -> qede : qede_start_queues
+activate qede
+qede -> qed : vport_start
+activate qed
+qed -> qed : <<TBD>>
+return
+loop queues
+alt RX
+qede -> qed : qed_chain_get_pbl_phys
+qede -> qed : qed_chain_get_page_cnt
+qede -> qed : q_rx_start 
+activate qed
+qed -> qed : <<TBD>>
+return
+qede -> qede : qede_update_rx_prod
+else XDP
+qede -> qede : qede_start_txq
+qede -> kernel : bpf_prog_add
+else TX
+loop cos in txq
+qede -> qede : qede_start_txq
+activate qed
+qed -> qed : <<TBD>>
+return
+end loop
+end alt
+end loop
+qede -> qede : qede_fill_rss_params
+qede -> qed : vport_update
+activate qed
+qed -> qed : <<TBD>>
+return
+return
+qede -> qede : qede_setup_tc
+activate qede
+qede -> net : netdev_reset_tc
+qede -> net : netdev_set_num_tc
+loop cos in txq
+qede -> net : netdev_set_tc_queue
+end
+return
+qede -> qede : qede_configure_vlan_filers
+qede -> qed : set_link
+activate qed
+qed -> qed : <<TBD>>
+return
+return
+qede -> net : upd_tunnel_get_rx_info
+qede -> qed : update_drv_state
+== interrupt ==
+pci -> qede : qede_msix_fp_int
+activate qede
+qede -> qed : qed_sb_ack
+qede -> net : napi_schedule_irqoff
+net -> qede : qede_poll
+activate qede
+loop cos in txq
+qede -> qede : qede_txq_has_work
+qede -> qede : qede_tx_int
+activate qede
+qede -> net : netdev_get_tx_queue
+loop pkt
+qede -> qede : qede_free_tx_pkt
+activate qede
+qede -> qed : qed_chain_consume -> first_bd
+qede -> kernel : dma_unmap_single(DMA_TO_DEVICE)
+loop frags in skb
+qede -> qed : qed_chain_consume
+qede -> kernel : dma_unmap_page(DMA_TO_DEVICE)
+end loop
+loop bds
+qede -> qed : qed_chain_consume
+end loop
+qede -> net : dev_kfree_skb_any
+return
+end loop
+qede -> net : netdev_tx_completed_queue
+alt netif_tx_queue_stopped
+alt qed_chain_get_elem_left(tx_pbl) >= MAX_SKB_FRAGS + 1 
+qede -> net : __netif_tx_lock
+qede -> net : netif_tx_wake_queue
+qede -> net : __netif_tx_unlock
+end alt
+end alt
+return
+end loop
+qede -> qede : qede_txq_has_work(xdp_tx)
+qede -> qede : qede_xdp_tx_int
+activate qede
+loop consumes
+qede -> qed : qed_chain_consume
+qede -> kernel : dma_unmap_page(DMA_BIDIRECTIONAL)
+qede -> kernel : __free_page
+end loop
+return
+qede -> qede : qede_has_rx_work
+qede -> qede : qede_rx_int
+activate qede
+qede -> qed : qed_chain_get_cons_idx
+loop consums
+qede -> qede : qede_rx_process_cqe
+activate qede
+qede -> qed : qed_chain_consume(rx_comp_ring) -> cqe
+alt CQE_TYPE_SLOW_PATH
+qede -> qede : eth_cqe_completion
+else !CQE_TYPE_REGULAR
+qede -> qede : qede_rx_process_tpa_cqe
+else
+alt xdp_prog
+qede -> qede : qede_rx_xdp
+else
+qede -> qede : "get 1st bd(block data??) from sw_rx_ring"
+qede -> qede : "get len and pad from cqe"
+qede -> qede : qede_check_csum
+qede -> qede : qede_rx_build_skb
+activate qede
+alt small frames
+qede -> net : netdev_alloc_skb
+qede -> net : skb_reserve
+qede -> net : skb_put_data
+qede -> qede : qed_reuse_page
+else
+qede -> qede : qede_build_skb
+activate qede 
+qede -> kernel : build_skb
+qede -> kernel : skb_reserve
+qede -> kernel : skb_put
+return
+qede -> qede : qede_realloc_rx_buffer
+activate qede
+alt reach end of page 
+qede -> qede : qede_alloc_rx_buffer
+activate qede
+qede -> kernel : alloc_pages
+qede -> kernel : dma_map_page
+qede -> qed : qed_chain_produce(rx_bd_ring)
+return
+qede -> kernel : dma_unmap_page
+else page can be reuse
+qede -> kernel : page_ref_inc
+qede -> qede : qede_reuse_page
+end alt
+return
+end alt
+qede -> qede : qede_rx_bd_ring_consume(rx_bd_ring)
+return
+alt more bd 
+qede -> qede : qede_rx_build_jumbo
+activate qede
+loop fragments
+qede -> qede : qede_alloc_rx_buffer
+qede -> qede : "get bd from sw_rx_ring"
+qede -> qede : qede_rx_bd_ring_consume
+qede -> kernel : dma_unmap_page(DMA_FROM_DEVICE)
+qede -> net : skb_fill_page_desc
+end
+return
+end alt
+qede -> qede : "set protocol"
+qede -> qede : qede_get_rxhash
+qede -> qede : qede_set_skb_csum
+qede -> qede : skb_record_rx_queue
+qede -> qede : qede_ptp_record_rx_ts
+qede -> qede : qede_skb_receive
+activate qede
+qede -> net : __vlan_hwaccel_put_tag
+qede -> net : napi_gro_receive
+return
+end alt
+end alt
+return
+qede -> qed : qed_chain_recycle_consumed
+end loop
+alt need alloc
+qede -> qede : qede_alloc_rx_buffer
+end alt
+qede -> qede : qede_update_rx_prod
+return
+alt rx_work_done < budget
+alt qede_poll_is_more_work
+qede -> net : napi_complete_done
+qede -> qed : qed_sb_ack(IGU_INT_ENABLE)
+end alt
+end alt
+alt xdp_xmit
+qede -> qed : qed_chain_get_prod_idx
+qede -> qede : qede_update_tx_producer
+end alt
+return
+return
+== transmit ==
+net -> qede : ndo_start_xmit
+qede -> qede : qede_start_xmit
+activate qede
+qede -> net : skb_get_queue_mapping
+qede -> net : netdev_get_tx_queue
+qede -> qede : qede_xmit_type
+qede -> qede : "fill entry in sw_tx_ring"
+qede -> qed : qed_chain_produce(tx_pbl) -> first_bd
+qede -> qede : qede_ptp_tx_ts
+qede -> kernel : dma_map_single(DMA_TO_DEVICE)
+alt have ipv6 extension or LSO
+qede -> qed : qed_chain_produce(tx_pbl) -> second_bd
+qede -> qed : qed_chain_produce(tx_pbl) -> third_bd
+end alt
+alt vlan
+qede -> qede : "set vlan info in first_bd"
+end alt
+alt checksum in upper stack
+qede -> qede : :set bitfields in first_bd"
+alt have ipv6 extension
+qede -> qede : qede_set_params_for_ipv6_ext
+end alt
+end alt
+alt LSO
+qede -> qede : "set bitfields in first_bd"
+qede -> qede : "set data.lso_mss in third_bd"
+qede -> qede : "set bitfields in third_bd"
+qede -> qede : qede_get_skb_hlen()->hlen
+alt skb_headlen() > hlen
+qede -> qede : "split bd"
+end alt
+end alt
+loop fragments
+qede -> qede : map_frag_to_bd
+activate qede
+qede -> net : skb_frag_dma_map(DMA_TO_DEVICE)
+return
+end loop
+qede -> net : netdev_tx_sent_queue
+qede -> net : skb_tx_timestamp
+qede -> qede : "advance sw_tx_prod"
+alt !netdev_xmit_more or netif_xmit_stopped
+qede -> qede : qede_update_tx_producer
+activate qede
+qede -> qede : writel(doorbell_addr)
+return
+end alt
+alt qed_chain_get_elem_left() < MAX_SKB_FRAGS + 1
+alt netdev_xmit_more
+qede -> qede : qede_update_tx_producer
+end alt
+qede -> net : netif_tx_stop_queue
+alt qed_chain_get_elem_left() >= MAX_SKB_FRAGS + 1
+qede -> net : netif_tx_wake_queue
+end alt
+end alt
+return
+@enduml

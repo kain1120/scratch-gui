@@ -1,0 +1,210 @@
+@startuml
+
+package pci #green {
+interface pci_driver {
+  name
+  ==
+  +probe
+  +remove
+  +suspend
+  +suspend_late
+  +resume_early
+  +resume
+  +shutdown
+  +sriov_configure
+}
+class pci_dev {
+}
+class msix_entry {
+  vector
+  entry
+}
+}
+
+class qede_pci_driver {
+  name="qede"
+  ==
+  .probe = qede_probe
+  .remove = qede_remove
+  .shutdown = qede_shutdown
+  .sriov_configure = qede_sriov_configure
+}
+
+class qed_common_ops_pass {
+  .probe = qed_probe
+  .remove = qed_remove
+  .set_power_stat = qed_set_power_state
+  ...
+}
+
+class qed_eth_ops_pass {
+  .common = qed_common_ops_pass
+  .iov = qed_iov_ops_pass
+  .dcb = qed_dcbnl_ops_pass
+  .ptp = qed_ptp_ops_pass
+  .fill_dev_info = qed_fill_eth_dev_info
+  ...
+}
+
+package net #green {
+interface net_device {
+  == netdev_ops ==
+  +ndo_init
+  +ndo_uninit
+  +ndo_open
+  +ndo_stop
+  +ndo_start_xmit
+  ...
+  +ndo_do_ioctl
+  ...
+  == ethtool_ops ==
+  +get_drvinfo
+  +get_regs_len
+  +get_regs
+  +get_wol
+  +set_wol
+  ...
+  == dcbnl_ops ==
+  +ieee_getets
+  +ieee_setets
+  +ieee_getmaxrate
+  +ieee_setmaxrate
+  ...
+}
+
+interface notifier_block {
+  +notifier_call
+}
+}
+
+class qede_netdev_notifier {
+  .notifier_call = qede_netdev_event
+}
+
+class _net_device<qede> {
+  == netdev_ops ==
+  .ndo_init
+  .ndo_uninit
+  .ndo_open = qede_open
+  .ndo_stop = qede_close
+  .ndo_start_xmit = qede_start_xmit
+  ...
+  .ndo_do_ioctl = qede_ioctl
+  ...
+  == ethtool_ops ==
+  .get_drvinfo = qede_get_drvinfo
+  .get_regs_len = qede_get_regs_len
+  .get_regs = qede_get_regs
+  .get_wol = qede_get_wol
+  .set_wol = qede_set_wol
+  ...
+  == dcbnl_ops ==
+  .ieee_getets = qede_dcbnl_ieee_getets
+  .ieee_setets = qede_dcbnl_ieee_setets
+  ...
+}
+
+class qed_hwfn {
+  regview
+  doorbells
+  db_phys_addr
+  [wq]iov_wq
+  [dw]iov_task = qed_iov_pf_task
+  [wq]slowpath_wq
+  [dw]slowpath_task = qed_slowpath_task
+}
+
+interface qed_dev {
+  == protocol_ops ==
+  -- common cb ops --
+  +arfs_filter_op
+  +link_update
+  +schedule_recovery_handler
+  +dcbx_aen
+  +get_generic_tlv_data
+  +get_protocol_tlv_data
+  -- eth cb ops --
+  +force_mac
+  +ports_update
+}
+
+class __qed_dev <qede> {
+  == protocol_ops ==
+  -- common cb ops --
+  .arfs_filter_op = qede_arfs_filter_op
+  .link_update = qede_link_update
+  .schedule_recovery_handler = qede_shedule_recovery_handler
+  .get_generic_tlv_data = qede_get_generic_tlv_data
+  .get_protocol_tlv_data = qede_get_eth_tlv_data
+  -- eth cb ops --
+  .force_mac = qede_force_mac
+  .ports_update = qede_udp_ports_update
+}
+
+class sw_rx_data {
+   data:page
+   mapping:dma_addr_r
+   page_offset
+}
+
+class qede_chain {
+  p_prod_elem
+  p_cons_elem
+  pbl
+  ...
+}
+
+class qede_rx_queue {
+  hw_cons_ptr
+  sw_rx_cons
+  sw_rx_prod
+  rxq_id
+  xdp_prog
+}
+
+class qede_fastpath {
+  napi
+  sb_info
+  txq
+  xdp_tx
+  name
+}
+
+class qed_int_info {
+  msix[]
+  msix_cnt
+  used_cnt
+}
+
+class qede_dev {
+  [dw]sp_task = qede_sp_task
+}
+
+notifier_block <|-- qede_netdev_notifier
+
+pci_driver <|-- qede_pci_driver
+
+net_device <|-- _net_device
+pci_dev <-- _net_device : parent||dev->driver_data
+
+qed_dev <|-- __qed_dev
+qed_hwfn "2" --o "1" __qed_dev
+__qed_dev -- qed_common_ops_pass : probe <
+qed_common_ops_pass o-- qed_eth_ops_pass
+
+_net_device <-- qede_dev : ndev||netdev_priv()
+__qed_dev <-- qede_dev : cdev
+pci_dev <-- qede_dev : pdev
+qed_eth_ops_pass <-- qede_dev : ops
+
+sw_rx_data "sw_rx_ring" --o qede_rx_queue
+qede_chain "rx_bd_ring\nrx_comp_ring" --o qede_rx_queue
+qede_rx_queue --o "rxq" qede_fastpath
+qede_fastpath "n" --o "1" qede_dev
+
+msix_entry "n" --o "1" qed_int_info
+qed_int_info --o  qede_dev
+
+qede_dev -- qede_pci_driver : probe <
+
+@enduml
