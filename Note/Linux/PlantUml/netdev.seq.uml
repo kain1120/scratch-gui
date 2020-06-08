@@ -1,0 +1,119 @@
+@startuml
+control nic_driver
+actor napi
+actor netif
+control af_inet 
+collections kernel
+== interrupt(napi) ==
+nic_driver -> napi : napi_schedule_irqoff
+activate napi #FFFFFF
+  napi -> napi : napi_schedule_prep
+  napi -> napi : __napi_schedule_irqoff
+  activate napi #FFFF77
+    napi -> kernel : __raise_softirq_irqoff(NET_RX_SOFTIRQ)
+  return 
+return
+kernel -> napi : net_rx_action
+activate napi #FFFFFF
+  napi -> napi : list_splice_init(poll_list)
+  loop poll_list
+    napi -> napi : napi_poll
+    activate napi #FFFF77
+      napi -> napi : netpoll_poll_lock
+      alt NAPI_STATE_SCHED
+        napi -> nic_driver : (*poll)
+        activate nic_driver 
+          loop consumes
+            nic_driver -> napi : napi_gro_receive
+            activate napi #FF7777
+              napi -> napi : skb_mark_napi_id
+              napi -> napi : skb_gro_reset_offset
+              napi -> napi : dev_gro_receive 
+              activate napi #777777
+                napi -> napi : gro_list_prepare>>napi->gro_hash[]
+                alt protocol gro handler exist
+                  napi -> napi : "fill some GRO CB"
+                  alt ipv6 protocol
+                    napi -> af_inet : ipv6_gro_receive
+                  else ipv4 protocol
+                    napi -> af_inet : inet_gro_receive
+                  end alt
+                  alt GRO_MERGED
+                    alt gro complete??
+                      napi -> napi : skb_list_del_init
+                      napi -> napi : napi_gro_complete
+                      napi -> napi : "napi->gro_hash[].count--"
+                    end alt
+                  end alt
+                  alt GRO_HELD
+                    alt napi->gro_hash[] MAX_GRO_SKBS
+                      napi -> napi : gro_flush_oldest
+                    else
+                      napi -> napi : "napi->gro_hash[].count++"
+                    end alt
+                    napi -> napi : list_add(napi->gro_hash[])
+                  end alt
+                end alt
+              return
+              napi -> napi : napi_skb_finish
+              activate napi #777777
+                alt GRO_NORMAL
+                  napi -> netif : netif_receive_skb_internal
+                else GRO_DROP
+                  napi -> napi : kfree_skb
+                else GRO_MERGED_FREE
+                  alt NAPI_GRO_FREE_STOLEN_HEAD
+                    napi -> napi : napi_skb_free_stolen_head
+                  else 
+                    napi -> napi : __kfree_skb
+                  end alt
+                else GRO_HELD
+                  napi -> napi : "do nothing"
+                end alt
+              return
+            return
+          end loop
+          alt no more work
+            nic_driver -> napi : napi_complete_done
+          end alt
+        return
+      end alt
+      alt work < weight
+        napi -> napi : "do nothing"
+      else napi_disable_pending()
+        napi -> napi : napi_complete
+        activate napi #FF7777
+          napi -> napi : napi_complete_done
+          activate napi #777777
+            napi -> napi : gro_normal_list
+            alt n->gro_bitmask
+              napi -> napi : napi_gro_flush
+              napi -> kernel : hrtimer_start
+            end alt
+            napi -> napi : list_del_init(n->poll_list)
+            napi -> napi : "set NAPI STATE"
+            alt NAPI STATE MISSED
+              napi -> napi : __napi_schedule
+            end alt
+          return
+        return
+      else
+        napi -> napi : gro_normal_list
+        activate napi #FF7777
+          napi -> netif : netif_receive_skb_list_internal(napi->rx_list)
+          napi -> napi : INIT_LIST_HEAD(napi->rx_list)
+        return
+        napi -> napi : napi_gro_flush
+        napi -> napi : list_add_tail(repoll)
+      end alt
+      napi -> napi : netpoll_poll_unlock
+    return
+  end loop
+  napi -> napi : list_splice_tail_init(poll_list)
+  napi -> napi : list_splice_tail(repoll, poll_list)
+  napi -> napi : list_splice(poll_list)
+  alt  poll_list not empty
+    napi -> kernel : __raise_softirq_irqoff(NET_RX_SOFTIRQ)
+  end alt
+return
+@enduml
