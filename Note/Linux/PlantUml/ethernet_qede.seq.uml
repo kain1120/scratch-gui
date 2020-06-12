@@ -2,10 +2,10 @@
 actor qede
 actor qed
 control pci
-control net
+control netdev
 collections kernel
 == module init ==
-qede ->o net : register_netdevice_notifier
+qede ->o netdev : register_netdevice_notifier
 qede ->o pci : pci_register_driver
 == probe ==
 pci -> qede : probe
@@ -159,26 +159,26 @@ return
 qede -> qed : fill_dev_info
 qede -> qede : qede_alloc_etherdev
 activate qede
-qede ->o net : alloc_etherdev_mqs
+qede ->o netdev : alloc_etherdev_mqs
 qede -> qede : "prepare qede_dev" 
 return
 qede -> qede : qede_init_ndev
 qede -> qede : qede_rdma_dev_add
 qede -> qede : INIT_DELAYED_WORK(qede_sp_task)
-qede -> net : register_netdev
+qede -> netdev : register_netdev
 qede -> qed : set_name
 qede -> qede : qede_ptp_enale
 qede -> qed : register_ops
 qede -> qede : qede_set_dcbnl_ops
 qede -> qede : qede_log_probe
 == ndo open (ifconfig xxx up) ==
-qede -> net : netif_carrier_off
+qede -> netdev : netif_carrier_off
 qede -> qed : set_power_state
 qede -> qede : qede_load
 activate qede
 qede -> qede : qede_set_num_queues
 activate qede 
-qede -> net : netif_get_num_default_rss_queues
+qede -> netdev : netif_get_num_default_rss_queues
 qede -> qede : "calculate rss number"
 qede -> qed : set_fp_int
 return
@@ -187,15 +187,15 @@ qede -> qede : qede_init_fp
 qede -> qede : qede_alloc_mem_load
 qede -> qede : qede_set_real_num_queues
 activate qede
-qede -> net : netif_set_real_num_tx_queues
-qede -> net : netif_set_real_num_rx_queues
+qede -> netdev : netif_set_real_num_tx_queues
+qede -> netdev : netif_set_real_num_rx_queues
 return
 qede -> qede : qede_alloc_arfs
 qede -> qede : qede_napi_add_enable
 activate qede
 loop queues
-qede -> net : netif_napi_add(qede_poll)
-qede -> net : napi_enble
+qede -> netdev : netif_napi_add(qede_poll)
+qede -> netdev : napi_enble
 end
 return
 qede -> qede : qede_setup_irqs
@@ -246,10 +246,10 @@ return
 return
 qede -> qede : qede_setup_tc
 activate qede
-qede -> net : netdev_reset_tc
-qede -> net : netdev_set_num_tc
+qede -> netdev : netdev_reset_tc
+qede -> netdev : netdev_set_num_tc
 loop cos in txq
-qede -> net : netdev_set_tc_queue
+qede -> netdev : netdev_set_tc_queue
 end
 return
 qede -> qede : qede_configure_vlan_filers
@@ -258,20 +258,20 @@ activate qed
 qed -> qed : <<TBD>>
 return
 return
-qede -> net : upd_tunnel_get_rx_info
+qede -> netdev : upd_tunnel_get_rx_info
 qede -> qed : update_drv_state
 == interrupt ==
 pci -> qede : qede_msix_fp_int
 activate qede
 qede -> qed : qed_sb_ack
-qede -> net : napi_schedule_irqoff
-net -> qede : qede_poll
+qede -> netdev : napi_schedule_irqoff
+netdev -> qede : qede_poll
 activate qede
 loop cos in txq
 qede -> qede : qede_txq_has_work
 qede -> qede : qede_tx_int
 activate qede
-qede -> net : netdev_get_tx_queue
+qede -> netdev : netdev_get_tx_queue
 loop pkt
 qede -> qede : qede_free_tx_pkt
 activate qede
@@ -284,15 +284,15 @@ end loop
 loop bds
 qede -> qed : qed_chain_consume
 end loop
-qede -> net : dev_kfree_skb_any
+qede -> netdev : dev_kfree_skb_any
 return
 end loop
-qede -> net : netdev_tx_completed_queue
+qede -> netdev : netdev_tx_completed_queue
 alt netif_tx_queue_stopped
 alt qed_chain_get_elem_left(tx_pbl) >= MAX_SKB_FRAGS + 1 
-qede -> net : __netif_tx_lock
-qede -> net : netif_tx_wake_queue
-qede -> net : __netif_tx_unlock
+qede -> netdev : __netif_tx_lock
+qede -> netdev : netif_tx_wake_queue
+qede -> netdev : __netif_tx_unlock
 end alt
 end alt
 return
@@ -328,9 +328,9 @@ qede -> qede : qede_check_csum
 qede -> qede : qede_rx_build_skb
 activate qede
 alt small frames
-qede -> net : netdev_alloc_skb
-qede -> net : skb_reserve
-qede -> net : skb_put_data
+qede -> netdev : netdev_alloc_skb
+qede -> netdev : skb_reserve
+qede -> netdev : skb_put_data
 qede -> qede : qed_reuse_page
 else
 qede -> qede : qede_build_skb
@@ -365,7 +365,7 @@ qede -> qede : qede_alloc_rx_buffer
 qede -> qede : "get bd from sw_rx_ring"
 qede -> qede : qede_rx_bd_ring_consume
 qede -> kernel : dma_unmap_page(DMA_FROM_DEVICE)
-qede -> net : skb_fill_page_desc
+qede -> netdev : skb_fill_page_desc
 end
 return
 end alt
@@ -376,8 +376,8 @@ qede -> qede : skb_record_rx_queue
 qede -> qede : qede_ptp_record_rx_ts
 qede -> qede : qede_skb_receive
 activate qede
-qede -> net : __vlan_hwaccel_put_tag
-qede -> net : napi_gro_receive
+qede -> netdev : __vlan_hwaccel_put_tag
+qede -> netdev : napi_gro_receive
 return
 end alt
 end alt
@@ -390,8 +390,8 @@ end alt
 qede -> qede : qede_update_rx_prod
 return
 alt rx_work_done < budget
-alt qede_poll_is_more_work
-qede -> net : napi_complete_done
+alt !qede_poll_is_more_work
+qede -> netdev : napi_complete_done
 qede -> qed : qed_sb_ack(IGU_INT_ENABLE)
 end alt
 end alt
@@ -402,11 +402,11 @@ end alt
 return
 return
 == transmit ==
-net -> qede : ndo_start_xmit
+netdev -> qede : ndo_start_xmit
 qede -> qede : qede_start_xmit
 activate qede
-qede -> net : skb_get_queue_mapping
-qede -> net : netdev_get_tx_queue
+qede -> netdev : skb_get_queue_mapping
+qede -> netdev : netdev_get_tx_queue
 qede -> qede : qede_xmit_type
 qede -> qede : "fill entry in sw_tx_ring"
 qede -> qed : qed_chain_produce(tx_pbl) -> first_bd
@@ -437,11 +437,11 @@ end alt
 loop fragments
 qede -> qede : map_frag_to_bd
 activate qede
-qede -> net : skb_frag_dma_map(DMA_TO_DEVICE)
+qede -> netdev : skb_frag_dma_map(DMA_TO_DEVICE)
 return
 end loop
-qede -> net : netdev_tx_sent_queue
-qede -> net : skb_tx_timestamp
+qede -> netdev : netdev_tx_sent_queue
+qede -> netdev : skb_tx_timestamp
 qede -> qede : "advance sw_tx_prod"
 alt !netdev_xmit_more or netif_xmit_stopped
 qede -> qede : qede_update_tx_producer
@@ -453,9 +453,9 @@ alt qed_chain_get_elem_left() < MAX_SKB_FRAGS + 1
 alt netdev_xmit_more
 qede -> qede : qede_update_tx_producer
 end alt
-qede -> net : netif_tx_stop_queue
+qede -> netdev : netif_tx_stop_queue
 alt qed_chain_get_elem_left() >= MAX_SKB_FRAGS + 1
-qede -> net : netif_tx_wake_queue
+qede -> netdev : netif_tx_wake_queue
 end alt
 end alt
 return
