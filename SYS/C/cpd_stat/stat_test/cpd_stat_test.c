@@ -65,6 +65,32 @@ CPD_STAT_VISIT_RESULT iterate_print_name_post (CPD_STAT_NODE* node, void * extra
     return result;
 }
 
+CPD_STAT_VISIT_RESULT iterate_remove_node (CPD_STAT_NODE* node, void * extra)
+{
+    CPD_STAT_HEAD* head = (CPD_STAT_HEAD*)node;
+    CPD_STAT_HEAD* removed = NULL_STAT_HEAD;
+	CPD_STAT_ROOT* pool = (CPD_STAT_ROOT*)extra;
+    if (head && pool)
+    {
+        char path[MAX_CPD_STAT_PATH_NAME_LENGTH] = {0};
+        cpd_stat_get_path(node, path);
+        printf("%s ref:%u\n", path, node->head.ref);
+		removed = cpd_stat_del_bachelor(head);
+		if (removed)
+		{
+        	printf("remove successful\n");
+			cpd_stat_add_child((CPD_STAT_HEAD*)pool, removed);
+		}
+		else
+		{
+        	printf("remove fail\n");
+		}
+    }
+
+    //return CPD_STAT_VISIT_STOP;
+    return CPD_STAT_VISIT_CONTINUE;
+}
+
 CPD_STAT_NODE* get_node_from_pool(void* extra)
 {
     CPD_STAT_ROOT* root = (CPD_STAT_ROOT*) extra;
@@ -72,7 +98,7 @@ CPD_STAT_NODE* get_node_from_pool(void* extra)
 
     if (root && root->head.child_head)
     {
-        head = cpd_stat_remove_itself(root->head.child_head);
+        head = cpd_stat_del_bachelor(root->head.child_head);
     }
 
     return ((CPD_STAT_NODE*)head);
@@ -596,12 +622,6 @@ int main(int argc, char *argv[])
 	printf ("prepare dynamic sample\n");
     {
         CPD_STAT_NODE * node = NULL_STAT_NODE;
-        CPD_STAT_FOLLOW_PATH_OPTION option;
-
-        option.flag = 0;
-        option.get_node = get_node_from_pool;
-        option.extra = (void*)&node_pool;
-        option.flag |= CPD_STAT_FOLLOW_PATH_FLAG_ADD_UNFOUND;
 
         for (unsigned int i = 1; i <= 3; ++i)
 		{
@@ -611,7 +631,7 @@ int main(int argc, char *argv[])
 				{
             		char name[256];
             		sprintf(name, "f1_%u.f2_%u_%u.f3_%u_%u_%u", i, i, j, i, j, k);
-        			node = cpd_stat_follow_path(&dyn_sample, name, option);
+        			node = cpd_stat_add_path(&dyn_sample, name, get_node_from_pool, (void*)&node_pool);
         			if (!node)
         			{
         				printf("fail to add %s\n", name);
@@ -635,6 +655,59 @@ int main(int argc, char *argv[])
     {
         CPD_STAT_TRAVEL_OPTION option;
         cpd_stat_travel(&dyn_sample, option, print_name, (CPD_STAT_VISIT)0, (void*)0);
+    }
+
+    printf ("================================\n");
+    printf ("prepare stage pool\n");
+    {
+	    cpd_stat_test_prepare_stage_node_pool();
+	}
+
+    printf ("================================\n");
+    printf ("delete child_head node of dynamic sample, put into stage pool\n");
+    {
+		CPD_STAT_HEAD * del = NULL_STAT_HEAD;
+		del = cpd_stat_del_family(dyn_sample.head.child_head);
+		if (del)
+		{
+		    cpd_stat_add_child((CPD_STAT_HEAD*)&(stage_node_pool), del);
+		}
+	}
+
+    printf ("================================\n");
+    printf ("travel stage pool: pre-order print name\n");
+    {
+        CPD_STAT_TRAVEL_OPTION option;
+        cpd_stat_travel(&stage_node_pool, option, print_name, (CPD_STAT_VISIT)0, (void*)0);
+    }
+
+    printf ("================================\n");
+    printf ("travel dynamic sample: pre-order print name\n");
+    {
+        CPD_STAT_TRAVEL_OPTION option;
+        cpd_stat_travel(&dyn_sample, option, print_name, (CPD_STAT_VISIT)0, (void*)0);
+    }
+
+    printf ("================================\n");
+    printf ("return stage pool's node to node pool\n");
+    {
+        CPD_STAT_TRAVEL_OPTION option;
+		
+        unsigned int round = 1;
+        CPD_STAT_TRAVEL_RESULT result = CPD_STAT_TRAVEL_MIDWAY;
+        do
+        {
+            printf ("round %u:\n", round++);
+        	result = cpd_stat_travel(&stage_node_pool, option, 
+				(CPD_STAT_VISIT)0, iterate_remove_node, (void*)&node_pool);
+        } while (result != CPD_STAT_TRAVEL_END);
+    }
+
+    printf ("================================\n");
+    printf ("travel stage pool: pre-order print name\n");
+    {
+        CPD_STAT_TRAVEL_OPTION option;
+        cpd_stat_travel(&stage_node_pool, option, print_name, (CPD_STAT_VISIT)0, (void*)0);
     }
 
     return 0;

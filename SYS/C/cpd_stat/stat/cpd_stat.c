@@ -136,7 +136,7 @@ bool cpd_stat_add_child(CPD_STAT_HEAD* parent, CPD_STAT_HEAD* child)
     return true;
 }
 
-CPD_STAT_HEAD* cpd_stat_del_child(CPD_STAT_HEAD* child)
+CPD_STAT_HEAD* cpd_stat_del_family(CPD_STAT_HEAD* child)
 {
     assert(child);
     CPD_STAT_HEAD* parent = child->parent;
@@ -180,6 +180,7 @@ CPD_STAT_HEAD* cpd_stat_del_child(CPD_STAT_HEAD* child)
     child->next = NULL_STAT_HEAD;
     child->prev = NULL_STAT_HEAD;
 
+    child->parent = NULL_STAT_HEAD;
 	if (parent->ref)
 	{
 		parent->ref--;
@@ -188,7 +189,7 @@ CPD_STAT_HEAD* cpd_stat_del_child(CPD_STAT_HEAD* child)
     return child;
 }
 
-CPD_STAT_HEAD* cpd_stat_remove_itself(CPD_STAT_HEAD* self)
+CPD_STAT_HEAD* cpd_stat_del_bachelor(CPD_STAT_HEAD* self)
 {
     assert(self);
     CPD_STAT_HEAD* parent = self->parent;
@@ -198,7 +199,7 @@ CPD_STAT_HEAD* cpd_stat_remove_itself(CPD_STAT_HEAD* self)
         return NULL_STAT_HEAD;
     }
 
-    return cpd_stat_del_child(self);
+    return cpd_stat_del_family(self);
 }
 
 unsigned int cpd_stat_parse_path (const char * path, CPD_STAT_NAME names[])
@@ -345,6 +346,28 @@ CPD_STAT_NODE* cpd_stat_follow_path (CPD_STAT_ROOT* root, const char * path, CPD
     return ((CPD_STAT_NODE*) last_match);
 }
 
+CPD_STAT_NODE* cpd_stat_search_path (CPD_STAT_ROOT* root, const char * path)
+{
+	CPD_STAT_FOLLOW_PATH_OPTION option;
+    option.flag = 0;
+    option.get_node = NULL;
+    option.extra = (void*)0;
+
+	return cpd_stat_follow_path(root, path, option);
+}
+
+CPD_STAT_NODE* cpd_stat_add_path (CPD_STAT_ROOT* root, const char * path, CPD_STAT_GET_UNINIT_NODE get_node, void* extra)
+{
+	CPD_STAT_FOLLOW_PATH_OPTION option;
+
+    option.flag = 0;
+    option.get_node = get_node;
+    option.extra = extra;
+    option.flag |= CPD_STAT_FOLLOW_PATH_FLAG_ADD_UNFOUND;
+
+	return cpd_stat_follow_path(root, path, option);
+}
+
 bool cpd_stat_verify_path (CPD_STAT_NODE* node, const char * path)
 {
     CPD_STAT_NAME names[MAX_CPD_STAT_PATH_NAME_DEPTH];
@@ -420,6 +443,7 @@ cpd_stat_travel_internal (CPD_STAT_HEAD* floor,
         }
         else
         {
+			CPD_STAT_HEAD* parent = next->parent;
             if (visit)
             {
                 visit_result = visit((CPD_STAT_NODE*)next, extra);
@@ -434,6 +458,14 @@ cpd_stat_travel_internal (CPD_STAT_HEAD* floor,
             {
                 post_visit_result = post_visit((CPD_STAT_NODE*)next, extra);
             }
+
+			// parent changed, we can say the 'next' has been deleted, stop travel!
+			if (next->parent != parent)
+			{
+				printf("del itself detected!\n");
+			    visit_result = CPD_STAT_VISIT_STOP;
+			    post_visit_result = CPD_STAT_VISIT_STOP;
+			}
 
             if (cpd_stat_check_visit_result(visit_result, post_visit_result, next_floor_result))
             {

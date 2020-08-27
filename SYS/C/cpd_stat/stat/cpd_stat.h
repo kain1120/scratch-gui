@@ -122,13 +122,15 @@ void cpd_stat_unmark_node_obsolete(CPD_STAT_NODE* node);
 bool cpd_stat_is_node_obsolete(CPD_STAT_NODE* node);
 bool cpd_stat_has_child(CPD_STAT_NODE* node);
 bool cpd_stat_add_child(CPD_STAT_HEAD* parent, CPD_STAT_HEAD* child);
-CPD_STAT_HEAD* cpd_stat_del_child(CPD_STAT_HEAD* child);
-CPD_STAT_HEAD* cpd_stat_remove_itself(CPD_STAT_HEAD* self);
+CPD_STAT_HEAD* cpd_stat_del_family(CPD_STAT_HEAD* child);
+CPD_STAT_HEAD* cpd_stat_del_bachelor(CPD_STAT_HEAD* self);
 
-CPD_STAT_NODE* cpd_stat_follow_path (CPD_STAT_ROOT* root, const char * path, CPD_STAT_FOLLOW_PATH_OPTION option);
 bool cpd_stat_verify_path (CPD_STAT_NODE* node, const char * path);
 void cpd_stat_get_path(CPD_STAT_NODE* node, char path[]);
 unsigned int cpd_stat_parse_path (const char * path, CPD_STAT_NAME names[]);
+CPD_STAT_NODE* cpd_stat_follow_path (CPD_STAT_ROOT* root, const char * path, CPD_STAT_FOLLOW_PATH_OPTION option);
+CPD_STAT_NODE* cpd_stat_search_path (CPD_STAT_ROOT* root, const char * path);
+CPD_STAT_NODE* cpd_stat_add_path (CPD_STAT_ROOT* root, const char * path, CPD_STAT_GET_UNINIT_NODE get_node, void* extra);
 
 CPD_STAT_TRAVEL_RESULT 
 cpd_stat_travel (CPD_STAT_ROOT* root, 
