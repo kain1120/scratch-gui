@@ -23,6 +23,7 @@ void cpd_stat_init_root(CPD_STAT_ROOT* root)
     root->head.prev = NULL_STAT_HEAD;
     root->head.type = CPD_STAT_HEAD_TYPE_ROOT;
     root->head.ref  = 0;
+	root->owner = NULL;
 }
 
 bool cpd_stat_is_root(CPD_STAT_HEAD* head)
@@ -205,9 +206,332 @@ CPD_STAT_HEAD* cpd_stat_del_bachelor(CPD_STAT_HEAD* self)
 unsigned long long cpd_stat_calc_mem_size()
 {
     unsigned long long size = 0;
-	size = MAX_CPD_STAT_NODE_NUMBER * sizeof(CPD_STAT_NODE) + 64;
+	size = MAX_CPD_STAT_NODE_NUMBER * sizeof(CPD_STAT_NODE);
+	size += MAX_CPD_STAT_COUNTER_NUMBER * sizeof(CPD_STAT_COUNTER);
+	size += MAX_CPD_STAT_GAUGE_NUMBER * sizeof(CPD_STAT_GAUGE);
+	size += 64;
+
 	return size;
 }
+
+CPD_STAT* cpd_stat_get_node_owner(CPD_STAT_NODE* node)
+{
+    CPD_STAT_HEAD* parent = (CPD_STAT_HEAD*)node;
+	CPD_STAT* owner = NULL;
+
+    assert(node);
+    while (!cpd_stat_is_root(parent))
+    {
+        parent = parent->parent;
+    }
+
+	if (parent && cpd_stat_is_root(parent))
+	{
+		owner = ((CPD_STAT_ROOT*)parent)->owner;
+	}
+
+	return owner;
+}
+
+CPD_STAT* cpd_stat_get_store_owner(CPD_STAT_STORE* store)
+{
+    CPD_STAT_HEAD* parent = NULL_STAT_HEAD;
+
+	assert(store);
+	parent = store->parent;
+	assert(parent);
+
+	return cpd_stat_get_node_owner((CPD_STAT_NODE*)parent);
+}
+
+void cpd_stat_init_store(CPD_STAT_STORE* store)
+{
+    assert(store);
+	store->parent = NULL_STAT_HEAD;
+	store->ref = 0;
+}
+
+void cpd_stat_push_store(CPD_STAT_STORE* stack, CPD_STAT_STORE* store)
+{
+    assert(stack && store);
+	
+	store->next = NULL;
+	store->ref = 0;
+
+	if (stack->next)
+	{
+		store->next = stack->next;
+	}
+
+	stack->next = store;
+	stack->ref++;
+}
+
+CPD_STAT_STORE* cpd_stat_pop_store(CPD_STAT_STORE* stack)
+{
+	CPD_STAT_STORE* store = NULL;
+    assert(stack);
+
+	if (stack->next)
+	{
+		store = stack->next;
+		stack->next = store->next;
+		store->next = NULL;
+
+		if (stack->ref)
+		{
+			stack->ref--;
+		}
+	}
+
+	return store;
+}
+
+CPD_STAT_STORE* cpd_stat_get_counter(CPD_STAT* stat)
+{
+	CPD_STAT_STORE* store;
+    assert(stat);
+
+	store = cpd_stat_pop_store(&(stat->counter_pool));
+
+	if (store)
+	{
+		cpd_stat_init_counter((CPD_STAT_COUNTER*)store);
+	}
+
+	return store;
+}
+
+CPD_STAT_STORE* cpd_stat_get_gauge(CPD_STAT* stat)
+{
+	CPD_STAT_STORE* store;
+    assert(stat);
+
+	store = cpd_stat_pop_store(&(stat->gauge_pool));
+
+	if (store)
+	{
+		cpd_stat_init_counter((CPD_STAT_COUNTER*)store);
+	}
+
+
+	return store;
+}
+
+bool cpd_stat_put_store(CPD_STAT_STORE* store)
+{
+	assert(store);
+
+	if (store->ref)
+	{
+	    return false;
+	}
+
+	return true;
+}
+
+bool cpd_stat_put_counter(CPD_STAT_STORE* store, void* extra)
+{
+	bool result = false;
+	CPD_STAT* stat = (CPD_STAT*)extra;
+	CPD_STAT_COUNTER* counter = (CPD_STAT_COUNTER*)store;
+
+	assert(counter && stat);
+
+    result = cpd_stat_put_store(&(counter->meta));
+	if (result)
+	{
+	    cpd_stat_push_store(&(stat->counter_pool), &(counter->meta));
+		result = true;
+	}
+
+	return result;
+}
+
+void cpd_stat_init_counter(CPD_STAT_COUNTER* counter)
+{
+    assert(counter);
+	cpd_stat_init_store(&counter->meta);
+	counter->meta.put = cpd_stat_put_counter;
+	counter->value = 0;
+}
+
+bool cpd_stat_put_gauge(CPD_STAT_STORE* store, void* extra)
+{
+	bool result = false;
+	CPD_STAT* stat = (CPD_STAT*)extra;
+	CPD_STAT_GAUGE* gauge = (CPD_STAT_GAUGE*)store;
+
+	assert(gauge && stat);
+
+    result = cpd_stat_put_store(&(gauge->meta));
+	if (result)
+	{
+	    cpd_stat_push_store(&(stat->gauge_pool), &(gauge->meta));
+		result = true;
+	}
+
+	return result;
+}
+
+void cpd_stat_init_gauge(CPD_STAT_GAUGE* gauge)
+{
+    assert(gauge);
+	cpd_stat_init_store(&gauge->meta);
+	gauge->meta.put = cpd_stat_put_gauge;
+	gauge->value = 0;
+}
+
+
+CPD_STAT_STORE* cpd_stat_direct_attach_store(CPD_STAT* stat, const char * path, CPD_STAT_STORE* store)
+{
+	CPD_STAT_NODE* node = NULL_STAT_NODE;
+
+	assert(stat && path && store);
+
+	node = cpd_stat_search_path(stat, path);
+
+	if (node && !cpd_stat_has_child(node)) 
+	{
+		if (!node->stat.store)
+		{
+			node->stat.store = store; 
+			store->ref++;
+
+			store->parent = &(node->head);
+			node->head.ref++;
+			return store;
+		}
+		else
+		{
+			assert(node->stat.store->parent == &(node->head));
+			if (node->stat.store->put == store->put)
+			{
+				node->stat.store->ref++;
+				return node->stat.store;
+			}
+		}
+	}
+
+	return (CPD_STAT_STORE*)0;
+}
+
+CPD_STAT_STORE* cpd_stat_attach_store (CPD_STAT* stat, const char * path,
+			   CPD_STAT_GET_STORE get, CPD_STAT_PUT_STORE put)
+{
+	CPD_STAT_STORE* store = NULL;
+	CPD_STAT_STORE* store2 = NULL;
+	bool result = false;
+    assert(stat && path && get && put);
+
+	store = (CPD_STAT_STORE*)get(stat);
+
+	if (store)
+	{
+	    store2 = cpd_stat_direct_attach_store(stat, path, store);
+	}
+
+	if (!store2 || store2 != store)
+	{
+	    result = put(store, (void*)stat);
+		assert(result);
+	}
+
+	return store2; 
+}
+
+CPD_STAT_COUNTER* cpd_stat_attach_counter(CPD_STAT* stat, const char * path)
+{
+    CPD_STAT_STORE* store = NULL;	
+	store = cpd_stat_attach_store(stat, path, cpd_stat_get_counter, cpd_stat_put_counter);
+	return (CPD_STAT_COUNTER*)store; 
+}
+
+CPD_STAT_GAUGE* cpd_stat_attach_gauge(CPD_STAT* stat, const char * path)
+{
+    CPD_STAT_STORE* store = NULL;	
+	store = cpd_stat_attach_store(stat, path, cpd_stat_get_gauge, cpd_stat_put_gauge);
+	return (CPD_STAT_GAUGE*)store; 
+}
+
+CPD_STAT_STORE* cpd_stat_detach_store_from_node (CPD_STAT_STORE* store)
+{
+	CPD_STAT_HEAD* parent = NULL_STAT_HEAD;
+	assert(store);
+
+	if (store->ref)
+	{
+	    store->ref--;
+	}
+
+	if (store->ref)
+	{
+		return (CPD_STAT_STORE*)NULL;
+	}
+
+	parent = store->parent;
+
+	if (parent)
+	{
+        CPD_STAT_NODE* node = (CPD_STAT_NODE*)parent;	
+		assert(node->stat.store == store);
+		assert(parent->ref);
+
+		node->stat.store = (CPD_STAT_STORE*)0;
+		parent->ref--;
+
+	}
+
+	store->parent = NULL_STAT_HEAD;
+
+	return store;
+}
+
+bool cpd_stat_detach_store(CPD_STAT_STORE* store)
+{
+	bool result = false;
+	CPD_STAT* owner = NULL;
+	CPD_STAT_STORE* store2 = NULL;
+
+	assert(store);
+	owner = cpd_stat_get_store_owner(store);
+	assert(owner);
+
+	store2 = cpd_stat_detach_store_from_node(store);
+
+	if (store2 && store2->put)
+	{
+		result = store2->put(store2, (void*)owner);
+	}
+
+	return result;
+}
+
+void cpd_stat_increase_counter(CPD_STAT_COUNTER* counter, unsigned int number)
+{
+    assert(counter);
+	counter->value += number;
+}
+
+void cpd_stat_increase_gauge(CPD_STAT_GAUGE* gauge, unsigned int number)
+{
+    assert(gauge);
+	gauge->value += number;
+}
+
+void cpd_stat_decrease_gauge(CPD_STAT_GAUGE* gauge, unsigned int number)
+{
+    assert(gauge);
+	if (gauge->value >= number)
+	{
+	    gauge->value -= number;
+	}
+	else
+	{
+	    gauge->value = 0;
+	}
+}
+
 
 bool cpd_stat_init(CPD_STAT* stat, CPD_STAT_ALLOC alloc)
 {
@@ -218,6 +542,13 @@ bool cpd_stat_init(CPD_STAT* stat, CPD_STAT_ALLOC alloc)
 	cpd_stat_init_root(&(stat->root));
 	cpd_stat_init_root(&(stat->node_pool));
 	cpd_stat_init_root(&(stat->staging_node_pool));
+
+	stat->root.owner = stat;
+	stat->node_pool.owner = stat;
+	stat->staging_node_pool.owner = stat;
+
+	cpd_stat_init_store(&(stat->counter_pool));
+	cpd_stat_init_store(&(stat->gauge_pool));
 
 	if (alloc)
 	{
@@ -233,6 +564,20 @@ bool cpd_stat_init(CPD_STAT* stat, CPD_STAT_ALLOC alloc)
 			cpd_stat_add_child(&(stat->node_pool.head), (CPD_STAT_HEAD*)mem);
 			mem += sizeof(CPD_STAT_NODE);
 		}
+
+		for (unsigned int i = 0; i < MAX_CPD_STAT_COUNTER_NUMBER; ++i)
+		{
+		    cpd_stat_init_counter((CPD_STAT_COUNTER*)mem);
+			cpd_stat_push_store(&(stat->counter_pool), (CPD_STAT_STORE*)mem);
+			mem += sizeof(CPD_STAT_COUNTER);
+		}
+
+		for (unsigned int i = 0; i < MAX_CPD_STAT_GAUGE_NUMBER; ++i)
+		{
+		    cpd_stat_init_gauge((CPD_STAT_GAUGE*)mem);
+			cpd_stat_push_store(&(stat->gauge_pool), (CPD_STAT_STORE*)mem);
+			mem += sizeof(CPD_STAT_GAUGE);
+		}
 	}
 	else
 	{
@@ -241,7 +586,6 @@ bool cpd_stat_init(CPD_STAT* stat, CPD_STAT_ALLOC alloc)
 
 	return true;
 }
-
 
 void cpd_stat_release(CPD_STAT* stat, CPD_STAT_FREE free)
 {
@@ -326,6 +670,19 @@ void cpd_stat_get_path(CPD_STAT_NODE* node, char path[])
     }
 
     strcat(path, ((CPD_STAT_NODE*)nodes[j])->stat.name.str);
+}
+
+void cpd_stat_get_full_name(CPD_STAT_STORE* store, char path[])
+{
+	CPD_STAT_HEAD* parent = NULL_STAT_HEAD;
+
+	assert(store);
+	parent = store->parent;
+
+	if (parent)
+	{
+		cpd_stat_get_path((CPD_STAT_NODE*)parent, path);
+	}
 }
 
 CPD_STAT_NODE* cpd_stat_follow_path (CPD_STAT* stat, const char * path, CPD_STAT_FOLLOW_PATH_OPTION option)
@@ -464,15 +821,15 @@ CPD_STAT_NODE* cpd_stat_add_path (CPD_STAT* stat, const char * path)
 	return cpd_stat_follow_path(stat, path, option);
 }
 
-bool cpd_stat_recycle_node (CPD_STAT* stat, const char * path)
+bool cpd_stat_recycle_node (CPD_STAT_NODE* node)
 {
-	CPD_STAT_NODE* node = NULL_STAT_NODE;
+	CPD_STAT* owner = NULL;
 
-	assert(stat);
+	assert(node);
+	owner = cpd_stat_get_node_owner(node);
+	assert(owner);
 	
-	node = cpd_stat_search_path (stat, path);
-
-	if (node)
+	if (owner)
 	{
 		CPD_STAT_HEAD* head = NULL_STAT_HEAD;
 		bool is_obsolete = cpd_stat_is_node_obsolete(node);
@@ -485,6 +842,30 @@ bool cpd_stat_recycle_node (CPD_STAT* stat, const char * path)
 		{
     		head = cpd_stat_del_bachelor((CPD_STAT_HEAD*)node);
 		}
+		
+		if (head)
+		{
+	    	cpd_stat_add_child((CPD_STAT_HEAD*)&(owner->staging_node_pool),
+		    	head);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool cpd_stat_trunc_path (CPD_STAT* stat, const char * path)
+{
+	CPD_STAT_NODE* node = NULL_STAT_NODE;
+
+	assert(stat);
+	
+	node = cpd_stat_search_path (stat, path);
+
+	if (node)
+	{
+		CPD_STAT_HEAD* head = NULL_STAT_HEAD;
+    	head = cpd_stat_del_family((CPD_STAT_HEAD*)node);
 		
 		if (head)
 		{
@@ -717,7 +1098,7 @@ bool cpd_stat_reclaim (CPD_STAT* stat, unsigned int count)
     	result = cpd_stat_travel_staging(stat, option, 
         	(CPD_STAT_VISIT)0, cpd_stat_remove_bachelor_iterate, (void*)stat);
 		count--;
-	} while (result != CPD_STAT_TRAVEL_END && !count);
+	} while (result != CPD_STAT_TRAVEL_END && count);
 
 	if (result == CPD_STAT_TRAVEL_END)
 	{
