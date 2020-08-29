@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "../stat/cpd_stat.h"
+#include "cpd_stat_test.h"
 
 CPD_STAT_VISIT_RESULT print_name (CPD_STAT_NODE* node, void * extra)
 {
@@ -93,59 +94,47 @@ CPD_STAT_VISIT_RESULT iterate_remove_node (CPD_STAT_NODE* node, void * extra)
 
 CPD_STAT_NODE* get_node_from_pool(void* extra)
 {
-    CPD_STAT_ROOT* root = (CPD_STAT_ROOT*) extra;
+    CPD_STAT* stat = (CPD_STAT*) extra;
     CPD_STAT_HEAD* head = NULL_STAT_HEAD;
 
-    if (root && root->head.child_head)
+    if (stat && stat->node_pool.head.child_head)
     {
-        head = cpd_stat_del_bachelor(root->head.child_head);
+        head = cpd_stat_del_bachelor(stat->node_pool.head.child_head);
     }
 
     return ((CPD_STAT_NODE*)head);
 }
 
-#define CPD_STAT_TEST_NODE_POOL_SIZE 1024
-CPD_STAT_NODE node_array[CPD_STAT_TEST_NODE_POOL_SIZE];
-CPD_STAT_ROOT node_pool; 
-
-CPD_STAT_ROOT* cpd_stat_test_prepare_node_pool()
-{
-    cpd_stat_init_root(&node_pool);
-    for (unsigned int i = 0; i < CPD_STAT_TEST_NODE_POOL_SIZE; ++i)
-    {
-        cpd_stat_init_node(&node_array[i], "");
-        cpd_stat_add_child((CPD_STAT_HEAD*)&node_pool,
-                (CPD_STAT_HEAD*)&node_array[i]);
-    }
-
-    return &node_pool;
-}
-
 #define CPD_STAT_TEST_SAMPLE_NUMBER 16
-CPD_STAT_ROOT sample_array[CPD_STAT_TEST_SAMPLE_NUMBER];
+CPD_STAT sample_array[CPD_STAT_TEST_SAMPLE_NUMBER];
 unsigned int sample_number = 0;
+
+void* alloc_mem(unsigned long long size)
+{
+	return malloc(size);
+}
 
 void cpd_stat_test_prepare_sample_array()
 {
     for (unsigned int i = 0; i < CPD_STAT_TEST_SAMPLE_NUMBER; ++i)
     {
-        cpd_stat_init_root(&sample_array[i]);
+        cpd_stat_init(&sample_array[i], alloc_mem);
     }
 
     printf ("prepare %uth sample: empty\n", ++sample_number);
     {
-        cpd_stat_init_root(&sample_array[sample_number - 1]);
+        cpd_stat_init_root(&(sample_array[sample_number - 1].root));
     }
 
     printf ("prepare %uth sample: 1 node\n", ++sample_number);
     {
         CPD_STAT_NODE* node = NULL_STAT_NODE;
 
-        node = get_node_from_pool((void*)&node_pool);
+        node = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node)
         {
             cpd_stat_init_node(node, "f1_1");
-            cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node);
+            cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node);
         }
     }
 
@@ -154,18 +143,18 @@ void cpd_stat_test_prepare_sample_array()
         CPD_STAT_NODE* node1 = NULL_STAT_NODE;
         CPD_STAT_NODE* node2 = NULL_STAT_NODE;
 
-        node1 = get_node_from_pool((void*)&node_pool);
+        node1 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node1)
         {
             cpd_stat_init_node(node1, "f1_1");
-            cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node1);
+            cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node1);
         }
 
-        node2 = get_node_from_pool((void*)&node_pool);
+        node2 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node2)
         {
             cpd_stat_init_node(node2, "f1_2");
-            cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node2);
+            cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node2);
         }
     }
 
@@ -175,25 +164,25 @@ void cpd_stat_test_prepare_sample_array()
         CPD_STAT_NODE* node2 = NULL_STAT_NODE;
         CPD_STAT_NODE* node3 = NULL_STAT_NODE;
 
-        node1 = get_node_from_pool((void*)&node_pool);
+        node1 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node1)
         {
             cpd_stat_init_node(node1, "f1_1");
-            cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node1);
+            cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node1);
         }
 
-        node2 = get_node_from_pool((void*)&node_pool);
+        node2 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node2)
         {
             cpd_stat_init_node(node2, "f1_2");
-            cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node2);
+            cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node2);
         }
 
-        node3 = get_node_from_pool((void*)&node_pool);
+        node3 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node3)
         {
             cpd_stat_init_node(node3, "f1_3");
-            cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node3);
+            cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node3);
         }
     }
 
@@ -202,14 +191,14 @@ void cpd_stat_test_prepare_sample_array()
         CPD_STAT_NODE* node1 = NULL_STAT_NODE;
         CPD_STAT_NODE* node2 = NULL_STAT_NODE;
 
-        node1 = get_node_from_pool((void*)&node_pool);
+        node1 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node1)
         {
             cpd_stat_init_node(node1, "f1_1");
-            cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node1);
+            cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node1);
         }
 
-        node2 = get_node_from_pool((void*)&node_pool);
+        node2 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node2)
         {
             cpd_stat_init_node(node2, "f2_1_1");
@@ -223,21 +212,21 @@ void cpd_stat_test_prepare_sample_array()
         CPD_STAT_NODE* node2 = NULL_STAT_NODE;
         CPD_STAT_NODE* node3 = NULL_STAT_NODE;
 
-        node1 = get_node_from_pool((void*)&node_pool);
+        node1 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node1)
         {
             cpd_stat_init_node(node1, "f1_1");
-            cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node1);
+            cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node1);
         }
 
-        node2 = get_node_from_pool((void*)&node_pool);
+        node2 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node2)
         {
             cpd_stat_init_node(node2, "f2_1_1");
             cpd_stat_add_child((CPD_STAT_HEAD*)node1, (CPD_STAT_HEAD*)node2);
         }
 
-        node3 = get_node_from_pool((void*)&node_pool);
+        node3 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node3)
         {
             cpd_stat_init_node(node3, "f2_1_2");
@@ -252,28 +241,28 @@ void cpd_stat_test_prepare_sample_array()
         CPD_STAT_NODE* node3 = NULL_STAT_NODE;
         CPD_STAT_NODE* node4 = NULL_STAT_NODE;
 
-        node1 = get_node_from_pool((void*)&node_pool);
+        node1 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node1)
         {
             cpd_stat_init_node(node1, "f1_1");
-            cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node1);
+            cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node1);
         }
 
-        node2 = get_node_from_pool((void*)&node_pool);
+        node2 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node2)
         {
             cpd_stat_init_node(node2, "f2_1_1");
             cpd_stat_add_child((CPD_STAT_HEAD*)node1, (CPD_STAT_HEAD*)node2);
         }
 
-        node3 = get_node_from_pool((void*)&node_pool);
+        node3 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node3)
         {
             cpd_stat_init_node(node3, "f2_1_2");
             cpd_stat_add_child((CPD_STAT_HEAD*)node1, (CPD_STAT_HEAD*)node3);
         }
 
-        node4 = get_node_from_pool((void*)&node_pool);
+        node4 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node4)
         {
             cpd_stat_init_node(node4, "f2_1_3");
@@ -289,39 +278,39 @@ void cpd_stat_test_prepare_sample_array()
         CPD_STAT_NODE* node4 = NULL_STAT_NODE;
         CPD_STAT_NODE* node5 = NULL_STAT_NODE;
 
-        node1 = get_node_from_pool((void*)&node_pool);
+        node1 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node1)
         {
             cpd_stat_init_node(node1, "f1_1");
-            cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node1);
+            cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node1);
         }
 
-        node2 = get_node_from_pool((void*)&node_pool);
+        node2 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node2)
         {
             cpd_stat_init_node(node2, "f2_1_1");
             cpd_stat_add_child((CPD_STAT_HEAD*)node1, (CPD_STAT_HEAD*)node2);
         }
 
-        node3 = get_node_from_pool((void*)&node_pool);
+        node3 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node3)
         {
             cpd_stat_init_node(node3, "f2_1_2");
             cpd_stat_add_child((CPD_STAT_HEAD*)node1, (CPD_STAT_HEAD*)node3);
         }
 
-        node4 = get_node_from_pool((void*)&node_pool);
+        node4 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node4)
         {
             cpd_stat_init_node(node4, "f2_1_3");
             cpd_stat_add_child((CPD_STAT_HEAD*)node1, (CPD_STAT_HEAD*)node4);
         }
 
-        node5 = get_node_from_pool((void*)&node_pool);
+        node5 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node5)
         {
             cpd_stat_init_node(node5, "f1_2");
-            cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node5);
+            cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node5);
         }
     }
 
@@ -334,42 +323,42 @@ void cpd_stat_test_prepare_sample_array()
         CPD_STAT_NODE* node5 = NULL_STAT_NODE;
         CPD_STAT_NODE* node6 = NULL_STAT_NODE;
 
-        node1 = get_node_from_pool((void*)&node_pool);
+        node1 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node1)
         {
             cpd_stat_init_node(node1, "f1_1");
-            cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node1);
+            cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node1);
         }
 
-        node2 = get_node_from_pool((void*)&node_pool);
+        node2 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node2)
         {
             cpd_stat_init_node(node2, "f2_1_1");
             cpd_stat_add_child((CPD_STAT_HEAD*)node1, (CPD_STAT_HEAD*)node2);
         }
 
-        node3 = get_node_from_pool((void*)&node_pool);
+        node3 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node3)
         {
             cpd_stat_init_node(node3, "f2_1_2");
             cpd_stat_add_child((CPD_STAT_HEAD*)node1, (CPD_STAT_HEAD*)node3);
         }
 
-        node4 = get_node_from_pool((void*)&node_pool);
+        node4 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node4)
         {
             cpd_stat_init_node(node4, "f2_1_3");
             cpd_stat_add_child((CPD_STAT_HEAD*)node1, (CPD_STAT_HEAD*)node4);
         }
 
-        node5 = get_node_from_pool((void*)&node_pool);
+        node5 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node5)
         {
             cpd_stat_init_node(node5, "f1_2");
-            cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node5);
+            cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node5);
         }
 
-        node6 = get_node_from_pool((void*)&node_pool);
+        node6 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node6)
         {
             cpd_stat_init_node(node6, "f2_2_1");
@@ -383,18 +372,18 @@ void cpd_stat_test_prepare_sample_array()
         {
             CPD_STAT_NODE* node1 = NULL_STAT_NODE;
             char name1[16];
-            node1 = get_node_from_pool((void*)&node_pool);
+            node1 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
             if (node1)
             {
                 sprintf(name1, "f1_%u", i);
                 cpd_stat_init_node(node1, name1);
-                cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node1);
+                cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node1);
 
                 for (unsigned int j = 1; j <= 3; ++j)
                 {
                     char name2[16];
                     sprintf(name2, "f2_%u_%u", i, j);
-                    CPD_STAT_NODE* node2 = get_node_from_pool((void*)&node_pool);
+                    CPD_STAT_NODE* node2 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
                     if (node2)
                     {
                         cpd_stat_init_node(node2, name2);
@@ -411,21 +400,21 @@ void cpd_stat_test_prepare_sample_array()
         CPD_STAT_NODE* node2 = NULL_STAT_NODE;
         CPD_STAT_NODE* node3 = NULL_STAT_NODE;
 
-        node1 = get_node_from_pool((void*)&node_pool);
+        node1 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node1)
         {
             cpd_stat_init_node(node1, "f1_1");
-            cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node1);
+            cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node1);
         }
 
-        node2 = get_node_from_pool((void*)&node_pool);
+        node2 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node2)
         {
             cpd_stat_init_node(node2, "f2_1_1");
             cpd_stat_add_child((CPD_STAT_HEAD*)node1, (CPD_STAT_HEAD*)node2);
         }
 
-        node3 = get_node_from_pool((void*)&node_pool);
+        node3 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
         if (node3)
         {
             cpd_stat_init_node(node3, "f2_1_1_1");
@@ -439,17 +428,17 @@ void cpd_stat_test_prepare_sample_array()
         {
             CPD_STAT_NODE* node1 = NULL_STAT_NODE;
             char name1[16];
-            node1 = get_node_from_pool((void*)&node_pool);
+            node1 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
             if (node1)
             {
                 sprintf(name1, "f1_%u", i);
                 cpd_stat_init_node(node1, name1);
-                cpd_stat_add_child((CPD_STAT_HEAD*)&sample_array[sample_number - 1], (CPD_STAT_HEAD*)node1);
+                cpd_stat_add_child((CPD_STAT_HEAD*)&(sample_array[sample_number - 1].root), (CPD_STAT_HEAD*)node1);
 
                 for (unsigned int j = 1; j <= 3; ++j)
                 {
                     char name2[16];
-                    CPD_STAT_NODE* node2 = get_node_from_pool((void*)&node_pool);
+                    CPD_STAT_NODE* node2 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
                     if (node2)
                     {
                         sprintf(name2, "f2_%u_%u", i, j);
@@ -459,7 +448,7 @@ void cpd_stat_test_prepare_sample_array()
                         for (unsigned int k = 1; k <= 3; ++k)
                         {
                             char name3[16];
-                            CPD_STAT_NODE* node3 = get_node_from_pool((void*)&node_pool);
+                            CPD_STAT_NODE* node3 = get_node_from_pool((void*)&sample_array[sample_number - 1]);
                             if (node3)
                             {
                                 sprintf(name3, "f3_%u_%u_%u", i, j, k);
@@ -474,43 +463,18 @@ void cpd_stat_test_prepare_sample_array()
     }
 }
 
-CPD_STAT_ROOT dyn_sample;
+CPD_STAT dyn_sample;
 
 void cpd_stat_test_prepare_dyn_sample()
 {
-	cpd_stat_init_root(&dyn_sample);
-}
-
-CPD_STAT_ROOT stage_node_pool;
-
-void cpd_stat_test_prepare_stage_node_pool()
-{
-	cpd_stat_init_root(&stage_node_pool);
+	cpd_stat_init(&dyn_sample, alloc_mem);
 }
 
 int main(int argc, char *argv[])
 {
     printf ("================================\n");
-    printf ("prepare node pool\n");
-    cpd_stat_test_prepare_node_pool();
-    printf ("travel all node pool: count number\n");
-    {
-        CPD_STAT_TRAVEL_OPTION option;
-        unsigned int count = 0;
-        cpd_stat_travel(&node_pool, option, (CPD_STAT_VISIT)count_node, (CPD_STAT_VISIT)0, (void*)&count);
-        printf ("%u nodes are prepared in node pool\n", count);
-    }
-
-    printf ("================================\n");
     printf ("prepare sample arrays\n");
     cpd_stat_test_prepare_sample_array();
-    printf ("travel all node pool: count number\n");
-    {
-        CPD_STAT_TRAVEL_OPTION option;
-        unsigned int count = 0;
-        cpd_stat_travel(&node_pool, option, (CPD_STAT_VISIT)count_node, (CPD_STAT_VISIT)0, (void*)&count);
-        printf ("%u nodes left in node pool\n", count);
-    }
 
     printf ("================================\n");
     printf ("travel all sample arrays: pre-order print name\n");
@@ -623,6 +587,8 @@ int main(int argc, char *argv[])
     {
         CPD_STAT_NODE * node = NULL_STAT_NODE;
 
+		cpd_stat_test_prepare_dyn_sample(&dyn_sample);
+
         for (unsigned int i = 1; i <= 3; ++i)
 		{
         	for (unsigned int j = 1; j <= 3; ++j)
@@ -631,7 +597,7 @@ int main(int argc, char *argv[])
 				{
             		char name[256];
             		sprintf(name, "f1_%u.f2_%u_%u.f3_%u_%u_%u", i, i, j, i, j, k);
-        			node = cpd_stat_add_path(&dyn_sample, name, get_node_from_pool, (void*)&node_pool);
+        			node = cpd_stat_add_path(&dyn_sample, name);
         			if (!node)
         			{
         				printf("fail to add %s\n", name);
@@ -642,15 +608,6 @@ int main(int argc, char *argv[])
 	}
 
     printf ("================================\n");
-    printf ("travel all node pool: count number\n");
-    {
-        CPD_STAT_TRAVEL_OPTION option;
-        unsigned int count = 0;
-        cpd_stat_travel(&node_pool, option, (CPD_STAT_VISIT)count_node, (CPD_STAT_VISIT)0, (void*)&count);
-        printf ("%u nodes left in node pool\n", count);
-    }
-
-    printf ("================================\n");
     printf ("travel dynamic sample: pre-order print name\n");
     {
         CPD_STAT_TRAVEL_OPTION option;
@@ -658,19 +615,23 @@ int main(int argc, char *argv[])
     }
 
     printf ("================================\n");
-    printf ("prepare stage pool\n");
+    printf ("travel node pool: pre-order count node \n");
     {
-	    cpd_stat_test_prepare_stage_node_pool();
-	}
+        CPD_STAT_TRAVEL_OPTION option;
+		unsigned int count = 0;
+        cpd_stat_travel_pool(&dyn_sample, option, count_node, (CPD_STAT_VISIT)0, (void*)&count);
+		printf ("there are %u node in the pool\n", count);
+    }
 
     printf ("================================\n");
-    printf ("delete child_head node of dynamic sample, put into stage pool\n");
+    printf ("recycle child_head node of dynamic sample\n");
     {
-		CPD_STAT_HEAD * del = NULL_STAT_HEAD;
-		del = cpd_stat_del_family(dyn_sample.head.child_head);
-		if (del)
+		CPD_STAT_NODE* node = cpd_stat_search_path(&dyn_sample, "f1_1");
+
+		if (node)
 		{
-		    cpd_stat_add_child((CPD_STAT_HEAD*)&(stage_node_pool), del);
+	    	cpd_stat_mark_node_obsolete(node);
+			cpd_stat_recycle_node(&dyn_sample, "f1_1");
 		}
 	}
 
@@ -678,7 +639,7 @@ int main(int argc, char *argv[])
     printf ("travel stage pool: pre-order print name\n");
     {
         CPD_STAT_TRAVEL_OPTION option;
-        cpd_stat_travel(&stage_node_pool, option, print_name, (CPD_STAT_VISIT)0, (void*)0);
+        cpd_stat_travel_staging(&dyn_sample, option, print_name, (CPD_STAT_VISIT)0, (void*)0);
     }
 
     printf ("================================\n");
@@ -694,20 +655,29 @@ int main(int argc, char *argv[])
         CPD_STAT_TRAVEL_OPTION option;
 		
         unsigned int round = 1;
-        CPD_STAT_TRAVEL_RESULT result = CPD_STAT_TRAVEL_MIDWAY;
+		unsigned int count = 2;
+		bool result = true;
         do
         {
             printf ("round %u:\n", round++);
-        	result = cpd_stat_travel(&stage_node_pool, option, 
-				(CPD_STAT_VISIT)0, iterate_remove_node, (void*)&node_pool);
-        } while (result != CPD_STAT_TRAVEL_END);
+        	result = cpd_stat_reclaim(&dyn_sample, count);
+        } while (result != true);
     }
 
     printf ("================================\n");
     printf ("travel stage pool: pre-order print name\n");
     {
         CPD_STAT_TRAVEL_OPTION option;
-        cpd_stat_travel(&stage_node_pool, option, print_name, (CPD_STAT_VISIT)0, (void*)0);
+        cpd_stat_travel_staging(&dyn_sample, option, print_name, (CPD_STAT_VISIT)0, (void*)0);
+    }
+
+    printf ("================================\n");
+    printf ("travel node pool: pre-order count node \n");
+    {
+        CPD_STAT_TRAVEL_OPTION option;
+		unsigned int count = 0;
+        cpd_stat_travel_pool(&dyn_sample, option, count_node, (CPD_STAT_VISIT)0, (void*)&count);
+		printf ("there are %u node in the pool\n", count);
     }
 
     return 0;

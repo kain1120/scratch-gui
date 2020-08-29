@@ -202,6 +202,63 @@ CPD_STAT_HEAD* cpd_stat_del_bachelor(CPD_STAT_HEAD* self)
     return cpd_stat_del_family(self);
 }
 
+unsigned long long cpd_stat_calc_mem_size()
+{
+    unsigned long long size = 0;
+	size = MAX_CPD_STAT_NODE_NUMBER * sizeof(CPD_STAT_NODE) + 64;
+	return size;
+}
+
+bool cpd_stat_init(CPD_STAT* stat, CPD_STAT_ALLOC alloc)
+{
+    void * mem = NULL;
+	unsigned long long size = cpd_stat_calc_mem_size();
+	assert(stat);
+
+	cpd_stat_init_root(&(stat->root));
+	cpd_stat_init_root(&(stat->node_pool));
+	cpd_stat_init_root(&(stat->staging_node_pool));
+
+	if (alloc)
+	{
+		mem = (void*)alloc(size);
+	}
+
+	if (mem)
+	{
+		stat->mem = mem;
+		for (unsigned int i = 0; i < MAX_CPD_STAT_NODE_NUMBER; ++i)
+		{
+		    cpd_stat_init_node((CPD_STAT_NODE*)mem, "");
+			cpd_stat_add_child(&(stat->node_pool.head), (CPD_STAT_HEAD*)mem);
+			mem += sizeof(CPD_STAT_NODE);
+		}
+	}
+	else
+	{
+		stat->mem = NULL;
+	}
+
+	return true;
+}
+
+
+void cpd_stat_release(CPD_STAT* stat, CPD_STAT_FREE free)
+{
+	unsigned long long size = 0;
+    assert(stat);
+
+	if (stat->mem && free)
+	{
+	    size = cpd_stat_calc_mem_size();
+		free(stat->mem, size);
+
+		cpd_stat_init_root(&(stat->root));
+		cpd_stat_init_root(&(stat->node_pool));
+		cpd_stat_init_root(&(stat->staging_node_pool));
+	}
+}
+
 unsigned int cpd_stat_parse_path (const char * path, CPD_STAT_NAME names[])
 {
     unsigned int char_index = 0;
@@ -271,18 +328,20 @@ void cpd_stat_get_path(CPD_STAT_NODE* node, char path[])
     strcat(path, ((CPD_STAT_NODE*)nodes[j])->stat.name.str);
 }
 
-CPD_STAT_NODE* cpd_stat_follow_path (CPD_STAT_ROOT* root, const char * path, CPD_STAT_FOLLOW_PATH_OPTION option)
+CPD_STAT_NODE* cpd_stat_follow_path (CPD_STAT* stat, const char * path, CPD_STAT_FOLLOW_PATH_OPTION option)
 {
     CPD_STAT_NAME names[MAX_CPD_STAT_PATH_NAME_DEPTH];
     CPD_STAT_HEAD* floor = NULL_STAT_HEAD;
     CPD_STAT_HEAD* match = NULL_STAT_HEAD; 
-    CPD_STAT_HEAD* last_match = (CPD_STAT_HEAD*)root; 
+    CPD_STAT_HEAD* last_match = NULL_STAT_HEAD; 
     unsigned int name_num = 0;
     unsigned int name_ind = 0;
 
-    assert(root && path);
+    assert(stat&& path);
 
-    floor = root->head.child_head;
+    last_match = (CPD_STAT_HEAD*)&(stat->root); 
+
+    floor = stat->root.head.child_head;
     if (!(name_num = cpd_stat_parse_path(path, names)) 
         || name_num > MAX_CPD_STAT_PATH_NAME_DEPTH)
     {
@@ -332,9 +391,12 @@ CPD_STAT_NODE* cpd_stat_follow_path (CPD_STAT_ROOT* root, const char * path, CPD
                 if(cpd_stat_add_child(last_match, (CPD_STAT_HEAD*)node))
                 {
                     last_match = (CPD_STAT_HEAD*)node;
-                    continue;
                 }
             }
+			else
+			{ 
+				break;
+			}
         }
     }
 
@@ -346,17 +408,17 @@ CPD_STAT_NODE* cpd_stat_follow_path (CPD_STAT_ROOT* root, const char * path, CPD
     return ((CPD_STAT_NODE*) last_match);
 }
 
-CPD_STAT_NODE* cpd_stat_search_path (CPD_STAT_ROOT* root, const char * path)
+CPD_STAT_NODE* cpd_stat_search_path (CPD_STAT* stat, const char * path)
 {
 	CPD_STAT_FOLLOW_PATH_OPTION option;
     option.flag = 0;
     option.get_node = NULL;
     option.extra = (void*)0;
 
-	return cpd_stat_follow_path(root, path, option);
+	return cpd_stat_follow_path(stat, path, option);
 }
 
-CPD_STAT_NODE* cpd_stat_add_path (CPD_STAT_ROOT* root, const char * path, CPD_STAT_GET_UNINIT_NODE get_node, void* extra)
+CPD_STAT_NODE* cpd_stat_add_path_outside_node_pool (CPD_STAT* stat, const char * path, CPD_STAT_GET_UNINIT_NODE get_node, void* extra)
 {
 	CPD_STAT_FOLLOW_PATH_OPTION option;
 
@@ -365,7 +427,74 @@ CPD_STAT_NODE* cpd_stat_add_path (CPD_STAT_ROOT* root, const char * path, CPD_ST
     option.extra = extra;
     option.flag |= CPD_STAT_FOLLOW_PATH_FLAG_ADD_UNFOUND;
 
-	return cpd_stat_follow_path(root, path, option);
+	return cpd_stat_follow_path(stat, path, option);
+}
+
+CPD_STAT_NODE* get_node_inside (void* extra)
+{
+    CPD_STAT* stat = (CPD_STAT*) extra;
+    CPD_STAT_HEAD* head = NULL_STAT_HEAD;
+
+    if (stat && stat->node_pool.head.child_head)
+    {
+        head = cpd_stat_del_bachelor(stat->node_pool.head.child_head);
+    }
+
+    return ((CPD_STAT_NODE*)head);
+}
+
+void put_node_inside (CPD_STAT* stat, CPD_STAT_NODE* node)
+{
+    if (stat && node)
+    {
+	    cpd_stat_add_child((CPD_STAT_HEAD*)&(stat->node_pool),
+		     (CPD_STAT_HEAD*)node);
+    }
+}
+
+CPD_STAT_NODE* cpd_stat_add_path (CPD_STAT* stat, const char * path)
+{
+	CPD_STAT_FOLLOW_PATH_OPTION option;
+
+    option.get_node = get_node_inside;
+    option.extra = (void*)stat;
+    option.flag = 0;
+    option.flag |= CPD_STAT_FOLLOW_PATH_FLAG_ADD_UNFOUND;
+
+	return cpd_stat_follow_path(stat, path, option);
+}
+
+bool cpd_stat_recycle_node (CPD_STAT* stat, const char * path)
+{
+	CPD_STAT_NODE* node = NULL_STAT_NODE;
+
+	assert(stat);
+	
+	node = cpd_stat_search_path (stat, path);
+
+	if (node)
+	{
+		CPD_STAT_HEAD* head = NULL_STAT_HEAD;
+		bool is_obsolete = cpd_stat_is_node_obsolete(node);
+
+		if (is_obsolete)
+		{
+    		head = cpd_stat_del_family((CPD_STAT_HEAD*)node);
+		}
+		else
+		{
+    		head = cpd_stat_del_bachelor((CPD_STAT_HEAD*)node);
+		}
+		
+		if (head)
+		{
+	    	cpd_stat_add_child((CPD_STAT_HEAD*)&(stat->staging_node_pool),
+		    	head);
+			return true;
+		}
+	}
+
+	return false;
 }
 
 bool cpd_stat_verify_path (CPD_STAT_NODE* node, const char * path)
@@ -462,7 +591,7 @@ cpd_stat_travel_internal (CPD_STAT_HEAD* floor,
 			// parent changed, we can say the 'next' has been deleted, stop travel!
 			if (next->parent != parent)
 			{
-				printf("del itself detected!\n");
+				//printf("del itself detected!\n");
 			    visit_result = CPD_STAT_VISIT_STOP;
 			    post_visit_result = CPD_STAT_VISIT_STOP;
 			}
@@ -485,18 +614,54 @@ cpd_stat_travel_internal (CPD_STAT_HEAD* floor,
 }
 
 CPD_STAT_TRAVEL_RESULT
-cpd_stat_travel (CPD_STAT_ROOT* root, 
+cpd_stat_travel (CPD_STAT* stat, 
         CPD_STAT_TRAVEL_OPTION option, 
         CPD_STAT_VISIT visit, 
         CPD_STAT_VISIT post_visit, 
         void* extra)
 {
-    assert(root); 
+    assert(stat); 
     assert(visit || post_visit); 
 
-    if (root->head.child_head)
+    if (stat->root.head.child_head)
     {
-        return cpd_stat_travel_internal(root->head.child_head, option.flag, 
+        return cpd_stat_travel_internal(stat->root.head.child_head, option.flag, 
+                visit, post_visit, extra);
+    }
+    return CPD_STAT_TRAVEL_END;
+}
+
+CPD_STAT_TRAVEL_RESULT
+cpd_stat_travel_staging (CPD_STAT* stat, 
+        CPD_STAT_TRAVEL_OPTION option, 
+        CPD_STAT_VISIT visit, 
+        CPD_STAT_VISIT post_visit, 
+        void* extra)
+{
+    assert(stat); 
+    assert(visit || post_visit); 
+
+    if (stat->staging_node_pool.head.child_head)
+    {
+        return cpd_stat_travel_internal(stat->staging_node_pool.head.child_head, option.flag, 
+                visit, post_visit, extra);
+    }
+    return CPD_STAT_TRAVEL_END;
+}
+
+CPD_STAT_TRAVEL_RESULT
+cpd_stat_travel_pool (CPD_STAT* stat, 
+        CPD_STAT_TRAVEL_OPTION option, 
+        CPD_STAT_VISIT visit, 
+        CPD_STAT_VISIT post_visit, 
+        void* extra)
+{
+    assert(stat); 
+    assert(visit || post_visit); 
+
+    if (stat->node_pool.head.child_head)
+    {
+        return cpd_stat_travel_internal(stat->node_pool.head.child_head, option.flag, 
                 visit, post_visit, extra);
     }
     return CPD_STAT_TRAVEL_END;
@@ -514,10 +679,51 @@ cpd_stat_visit_unmark_visited (CPD_STAT_NODE* node, void * extra)
 }
 
 CPD_STAT_TRAVEL_RESULT 
-cpd_stat_unmark_visited(CPD_STAT_ROOT* root)
+cpd_stat_unmark_visited(CPD_STAT* stat)
 {
     CPD_STAT_TRAVEL_OPTION option;
     option.flag = 0;
-    return cpd_stat_travel(root, option, cpd_stat_visit_unmark_visited, (CPD_STAT_VISIT)0, (void*) 0);
+    return cpd_stat_travel(stat, option, cpd_stat_visit_unmark_visited, (CPD_STAT_VISIT)0, (void*) 0);
+}
+
+CPD_STAT_VISIT_RESULT
+cpd_stat_remove_bachelor_iterate (CPD_STAT_NODE* node, void * extra)
+{
+    CPD_STAT_HEAD* head = (CPD_STAT_HEAD*)node;
+    CPD_STAT_HEAD* removed = NULL_STAT_HEAD;
+	CPD_STAT* stat = (CPD_STAT*)extra;
+    if (head && stat)
+    {
+		removed = cpd_stat_del_bachelor(head);
+		if (removed)
+		{
+			cpd_stat_init_node((CPD_STAT_NODE*)removed, "");
+			cpd_stat_add_child((CPD_STAT_HEAD*)&(stat->node_pool), removed);
+		}
+    }
+
+    //return CPD_STAT_VISIT_STOP;
+    return CPD_STAT_VISIT_CONTINUE;
+}
+
+bool cpd_stat_reclaim (CPD_STAT* stat, unsigned int count)
+{
+    CPD_STAT_TRAVEL_OPTION option;
+    CPD_STAT_TRAVEL_RESULT result = CPD_STAT_TRAVEL_MIDWAY;
+	assert(stat);
+
+	do
+	{
+    	result = cpd_stat_travel_staging(stat, option, 
+        	(CPD_STAT_VISIT)0, cpd_stat_remove_bachelor_iterate, (void*)stat);
+		count--;
+	} while (result != CPD_STAT_TRAVEL_END && !count);
+
+	if (result == CPD_STAT_TRAVEL_END)
+	{
+        return true;
+	}
+
+    return false;
 }
 

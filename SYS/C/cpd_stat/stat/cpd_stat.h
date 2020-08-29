@@ -5,6 +5,8 @@
 #define MAX_CPD_STAT_PATH_NAME_LENGTH 256
 #define MAX_CPD_STAT_PATH_NAME_DEPTH 16
 
+#define MAX_CPD_STAT_NODE_NUMBER 1024
+
 typedef enum { false, true } bool;
 #define NULL_STAT_HEAD ((CPD_STAT_HEAD*) 0)
 #define NULL_STAT_NODE ((CPD_STAT_NODE*) 0)
@@ -63,6 +65,14 @@ typedef struct _CPD_STAT_ROOT
     CPD_STAT_HEAD head;
 } CPD_STAT_ROOT;
 
+typedef struct _CPD_STAT
+{
+    CPD_STAT_ROOT root;
+	CPD_STAT_ROOT node_pool;
+	CPD_STAT_ROOT staging_node_pool;
+	void* mem;
+} CPD_STAT;
+
 typedef struct _CPD_STAT_COUNTER
 {
     unsigned long value;
@@ -109,10 +119,8 @@ typedef enum _CPD_STAT_TRAVEL_RESULT
 
 typedef CPD_STAT_VISIT_RESULT (*CPD_STAT_VISIT)(CPD_STAT_NODE* node, void* extra);
 
-void cpd_stat_init_root(CPD_STAT_ROOT* root);
 bool cpd_stat_is_root(CPD_STAT_HEAD* head);
 
-void cpd_stat_init_node(CPD_STAT_NODE* node, const char* name);
 bool cpd_stat_check_node(CPD_STAT_NODE* node);
 void cpd_stat_mark_node_visited(CPD_STAT_NODE* node);
 void cpd_stat_unmark_node_visited(CPD_STAT_NODE* node);
@@ -121,26 +129,29 @@ void cpd_stat_mark_node_obsolete(CPD_STAT_NODE* node);
 void cpd_stat_unmark_node_obsolete(CPD_STAT_NODE* node);
 bool cpd_stat_is_node_obsolete(CPD_STAT_NODE* node);
 bool cpd_stat_has_child(CPD_STAT_NODE* node);
-bool cpd_stat_add_child(CPD_STAT_HEAD* parent, CPD_STAT_HEAD* child);
-CPD_STAT_HEAD* cpd_stat_del_family(CPD_STAT_HEAD* child);
-CPD_STAT_HEAD* cpd_stat_del_bachelor(CPD_STAT_HEAD* self);
+
+typedef void* (*CPD_STAT_ALLOC)(unsigned long long size);
+typedef void (*CPD_STAT_FREE)(void* mem, unsigned long long size);
+bool cpd_stat_init(CPD_STAT* stat, CPD_STAT_ALLOC alloc);
+void cpd_stat_release(CPD_STAT* stat, CPD_STAT_FREE free);
 
 bool cpd_stat_verify_path (CPD_STAT_NODE* node, const char * path);
 void cpd_stat_get_path(CPD_STAT_NODE* node, char path[]);
-unsigned int cpd_stat_parse_path (const char * path, CPD_STAT_NAME names[]);
-CPD_STAT_NODE* cpd_stat_follow_path (CPD_STAT_ROOT* root, const char * path, CPD_STAT_FOLLOW_PATH_OPTION option);
-CPD_STAT_NODE* cpd_stat_search_path (CPD_STAT_ROOT* root, const char * path);
-CPD_STAT_NODE* cpd_stat_add_path (CPD_STAT_ROOT* root, const char * path, CPD_STAT_GET_UNINIT_NODE get_node, void* extra);
+
+CPD_STAT_NODE* cpd_stat_search_path (CPD_STAT* stat, const char * path);
+CPD_STAT_NODE* cpd_stat_add_path (CPD_STAT* stat, const char * path);
+bool cpd_stat_recycle_node (CPD_STAT* stat, const char * path);
+bool cpd_stat_reclaim (CPD_STAT* stat, unsigned int count);
 
 CPD_STAT_TRAVEL_RESULT 
-cpd_stat_travel (CPD_STAT_ROOT* root, 
+cpd_stat_travel (CPD_STAT* stat, 
         CPD_STAT_TRAVEL_OPTION option, 
         CPD_STAT_VISIT visit, 
         CPD_STAT_VISIT post_visit, 
         void* extra);
 
 CPD_STAT_TRAVEL_RESULT
-cpd_stat_unmark_visited(CPD_STAT_ROOT* root);
+cpd_stat_unmark_visited(CPD_STAT* stat);
 
 #endif
 
