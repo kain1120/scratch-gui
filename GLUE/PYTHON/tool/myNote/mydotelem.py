@@ -16,6 +16,8 @@ for arg in sys.argv[1:]:
         action = arg
     elif arg == "clean":
         action = arg
+    elif arg == "list":
+        action = arg
     elif arg == "all":
         source_file="*"
     else:
@@ -53,7 +55,6 @@ def find_dep(dot_file):
     return result;
 
 def make_dot(dot_file, elems_dir, output_elems_dir):
-    print(dot_file)
     dep_dots = find_dep(elems_dir+"/"+dot_file+".dot")
     for dep in dep_dots:
         make_dot(dep, elems_dir, output_elems_dir)
@@ -79,3 +80,11 @@ elif action == "make":
             make_dot(dot_file, elems_dir, output_elems_dir)
     else:
         make_dot(source_file, elems_dir, output_elems_dir)
+elif action == "list":
+        elems = os.listdir(elems_dir)
+        print([os.path.splitext(elem)[0] for elem in elems if os.path.splitext(elem)[-1] == ".dot"])
+        print("png:")
+        print([os.path.splitext(elem)[0] for elem in elems if os.path.splitext(elem)[-1] == ".png"])
+        elems = os.listdir(output_elems_dir)
+        print("output png dir:")
+        print([os.path.splitext(elem)[0] for elem in elems if os.path.splitext(elem)[-1] == ".png"])
