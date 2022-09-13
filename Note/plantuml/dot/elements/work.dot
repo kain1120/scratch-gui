@@ -1,0 +1,7 @@
+digraph G {
+    graph [pad=0, ranksep="0.15"];
+    fun [image="./function.png", margin=0, shape=none, label=""]
+
+    work [label="", shape=proteinstab, height=0.3, width=0.7]
+    work -> fun [arrowhead="none", color="red"] 
+}

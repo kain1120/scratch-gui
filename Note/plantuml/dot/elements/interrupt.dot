@@ -1,0 +1,12 @@
+digraph G {
+    graph [pad=0, ranksep="0.35"];
+    subgraph cluster_interrupt {
+       shape=box
+       color="darkseagreen"
+       style=solid
+       isr [image="./function.png", margin=0, shape=none, label="ISR", labelloc="c", fontcolor="red", fontsize="14pt"]
+
+    }
+    int [label="", shape=none]
+    isr -> int [dir=back, arrowtail="vee", color="darkorchid"] 
+}

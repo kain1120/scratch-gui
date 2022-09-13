@@ -1,0 +1,45 @@
+@startuml
+object sock_mnt
+sock_mnt : mnt_sb
+
+object super_block
+sock_mnt::mnt_sb -> super_block
+
+object socket_alloc
+socket_alloc : vfs_inode
+socket_alloc : socket
+
+object inode
+inode : i_op
+super_block ..> inode : create
+socket_alloc::vfs_inode --> inode
+
+object sockfs_inode_ops
+inode::i_op --> sockfs_inode_ops
+
+object socket
+socket : sk
+socket_alloc::socket --> socket
+
+object sock
+socket::sk --> sock
+
+object net_families
+net_families : PF_INET 
+net_families : ...
+
+object "net_proto_family" as net_proto_family_inet
+net_proto_family_inet : [[http/location/inet_create.act.type inet_create()]] 
+net_families::PF_INET --> net_proto_family_inet
+
+socket <. net_proto_family_inet::inet_create
+
+object "[[http/location/../protocol/inet.obj.type inetsw]]" as inetsw
+inetsw : SOCK_DGRAM
+inetsw : SOCK_STREAM
+inetsw : SOCK_RAW
+inetsw : ...
+
+net_proto_family_inet <.> inetsw
+
+@enduml

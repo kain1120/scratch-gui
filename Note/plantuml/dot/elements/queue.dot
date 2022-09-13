@@ -1,0 +1,4 @@
+digraph G {
+    graph [pad=0.01];
+    queue [shape=record,label="&gt;|&gt;|&gt;|&gt;|&gt;", color="red", fontcolor="red", height=0.2, width=1.0, fixedsize=true];
+}

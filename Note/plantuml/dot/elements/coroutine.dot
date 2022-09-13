@@ -1,0 +1,8 @@
+digraph G {
+    subgraph cluster_coroutine {
+       shape=none
+       color="darkseagreen"
+       style=dashed
+       coroutine [image="./function.png", shape=none, label=""]
+    }
+}

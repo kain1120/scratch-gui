@@ -1,0 +1,13 @@
+@startmindmap
+* SYSCALL_DEFINE6(name, ...)
+**  SYSCALL_DEFINEx(6, _##name, __VA_ARGS__) 
+*** SYSCALL_METADATA(sname, x, __VA_ARGS__)
+****[#lightpink] __syscall_meta_##sname{}
+*****[#lightpink] .name="sys"#sname
+*****[#lightpink] .types=types_##sname[]
+*****[#lightpink] .args=args_##sname[]
+****[#lightpink] __p_syscall_meta_##sname
+*** __SYSCALL_DEFINEx(x, sname, __VA_ARGS__)
+****[#lightgreen] __do_sys##name()
+****[#lightgreen] __se_sys##name()
+@endmidmap

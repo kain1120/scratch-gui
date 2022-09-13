@@ -1,0 +1,12 @@
+digraph G {
+    graph [pad=0, ranksep="0.01"];
+
+    subgraph cluster_kthread {
+       shape=box
+       color="darkseagreen"
+       style=solid
+       kthread [image="./function.png", shape=none, label="wq", labelloc="t", fontcolor="red", fontsize="20pt"];
+       workqueue [image="./queue.png", shape=none, label=""];
+       workqueue -> kthread [style="invis"];
+    }
+}

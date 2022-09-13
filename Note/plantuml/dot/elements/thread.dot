@@ -1,0 +1,8 @@
+digraph G {
+    subgraph cluster_thread {
+       shape=box
+       color="darkseagreen"
+       style=solid
+       thread [image="./function.png", shape=none,label=""]
+    }
+}

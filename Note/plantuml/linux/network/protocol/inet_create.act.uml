@@ -1,0 +1,9 @@
+@startuml
+start
+: "find inet_protosw according to ty-pe protocol";
+: request_module();
+: sk_alloc();
+: "init inet_sock";
+: sock_init_data();
+stop
+@enduml

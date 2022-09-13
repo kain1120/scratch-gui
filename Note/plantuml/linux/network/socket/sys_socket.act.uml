@@ -1,0 +1,14 @@
+@startuml
+start
+partition sock_create {
+: security_socket_create();
+: sock_alloc();
+: [[http/location/inet_create.act.type inet_create()]];
+note right : if PF_INET
+: security_socket_post_create();
+}
+
+partition sock_map_fd {
+}
+stop
+@enduml

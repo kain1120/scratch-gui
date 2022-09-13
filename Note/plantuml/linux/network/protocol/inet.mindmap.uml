@@ -1,0 +1,39 @@
+@startmindmap
+* fs_initcall()
+**[#lightgreen] inet_init()
+*** proto_register(proto_list)
+****[#lightpink] tcp_prot
+*****[#lightpink] .name = "TCP" 
+****[#lightpink] udp_prot
+****[#lightpink] raw_prot
+****[#lightpink] ping_prot
+*** sock_register()
+****[#lightpink] inet_family_ops 
+*****[#lightpink] inet_family_ops 
+*****[#lightpink] .family = PF_INET
+*****[#lightgreen] .create = inet_create
+*** ip_static_sysctl_init()
+*** inet_add_protocol()
+****[#lightpink] icmp_protocol
+****[#lightpink] udp_protocol
+****[#lightpink] tcp_protocol
+****[#lightpink] igmp_protocol
+*** "init inetsw"
+***[#lightblue] for each inetsw_array
+**** inet_register_protosw
+*** arp_init() 
+*** ip_init()
+*** init_ipv4_mibs()
+*** tcp_init() 
+*** udp_init() 
+*** udplite4_register() 
+*** raw_init()
+*** ping_init()
+*** icmp_init()
+*** ip_mr_init()
+*** init_inet_pernet_ops()
+*** ipv4_proc_init()
+*** ipfrag_init()
+*** dev_add_pack()
+*** ip_tunnel_core_init()
+@endmidmap

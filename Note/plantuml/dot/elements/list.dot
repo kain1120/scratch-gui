@@ -1,0 +1,10 @@
+digraph G {
+    graph [pad=0, rankdir="LR", ranksep=0.1];
+    elem1 [shape=box,label="", color="red", height=0.2, width=0.1, fixedsize=true];
+    elem2 [shape=box,label="", color="red", height=0.2, width=0.1, fixedsize=true];
+    elem3 [shape=box,label="", color="red", height=0.2, width=0.1, fixedsize=true];
+    elem4 [shape=box,label="", color="red", height=0.2, width=0.1, fixedsize=true];
+    elem5 [shape=box,label="", color="red", height=0.2, width=0.1, fixedsize=true];
+
+    elem1 -> elem2 -> elem3 -> elem4 -> elem5 [color="red", arrowsize=0.1]
+}

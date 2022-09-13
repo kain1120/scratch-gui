@@ -1,0 +1,33 @@
+@startuml
+'skinparam linetype polyline 
+'skinparam linetype ortho 
+skinparam nodesep 50
+skinparam ranksep 50
+
+map tcp_prot {
+}
+
+map inet_stream_ops{
+}
+
+map inet_protosw {
+proto *--> tcp_prot 
+ops *--> inet_stream_ops 
+}
+
+map "inet_sock\n<<sock>>" as sock {
+sk_prot *-> tcp_prot
+}
+
+map socket {
+ops *-> inet_stream_ops
+sk *-> sock
+}
+
+object inode
+
+map socket_alloc {
+socket *--> socket
+vfs_inode *--> inode
+}
+@enduml

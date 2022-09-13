@@ -1,0 +1,13 @@
+digraph G {
+    subgraph cluster_process {
+       shape=box
+       color="darkseagreen"
+       style=bold
+       subgraph cluster_thread {
+       shape=box
+       color="darkseagreen"
+       style=solid
+       process [image="./function.png", shape=none, label=""]
+       }
+    }
+}

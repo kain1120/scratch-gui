@@ -1,0 +1,86 @@
+@startmindmap
+* core_initcall() 
+**[#lightgreen] sock_init()
+*** net_sysctl_init() 
+**** register_sysctl()
+*****[#red] "net" subsystem
+**** register_pernet_subsys()
+*****[#lightpink] sysctl_pernet_ops
+*** skb_init()
+**** kmem_cache_create_usercopy()
+*****[#red] "skbuff_head_cache"
+**** kmem_cache_create()
+*****[#red] "skbuff_fclone_cache"
+**** skb_extensions_init()
+***** kmem_cache_create()
+******[#red] "skbuff_ext_cache"
+*** init_inodecache()
+**** kmem_cache_create()
+*****[#red] "sock_inode_cache"
+***:register_filesystem()
+kern_mount();
+****[#red] sock_fs_type
+*****[#lightpink] .name = "sockfs"
+*****[#lightgreen] .init_fs_context=sockfs_init_fs_context
+****** init_pseudo()
+*******[#lightpink] fs_context 
+********[#lightpink] ops = &pseudo_fs_context_ops 
+*********[#lightgreen] .free = pseudo_fs_free() 
+*********[#lightgreen] .get_tree = pseudo_fs_get_tree() 
+********[#lightpink] fs_private = pseudo_fs_context 
+*********[#lightpink] ops = &sockfs_ops
+**********[#lightgreen] .alloc_inode = sock_alloc_inode
+**********[#lightgreen] .free_inode = sock_free_inode
+**********[#lightgreen] .statfs = simple_statfs 
+*********[#lightpink] dops = &sockfs_dentry_operations
+**********[#lightgreen] .d_dname = sockfs_dname 
+*********[#lightpink] xattr = sockfs_xattr_handlers
+*****[#lightgreen] .kill_sb=kill_anon_super
+*** netfilter_init()
+**** register_pernet_subsys()
+*****[#lightpink] netfilter_net_ops
+******[#lightgreen] .init = netfilter_net_init
+******[#lightgreen] .exit = netfilter_net_exit
+**** netfilter_log_init()
+***** register_pernet_subsys()
+******[#lightpink] nf_log_net_ops
+*******[#lightgreen] .init = nf_log_net_init
+*******[#lightgreen] .exit = nf_log_net_exit
+*** ptp_classifier_init()
+**** bpf_prog_create()
+
+* SYSCALL_DEFINE2()
+**[#lightgreen] sys_socketcall()
+*** audit_socketcall()
+***[#lightblue] switch(call)
+**** SYS_SOCKET:__sys_socket()
+***** sock_create()
+****** __sock_create()
+******* security_socket_create()
+******* sock_alloc()
+******** new_inode_pseudo()
+********* alloc_inode(super_block)
+********** super_block.alloc_inode()
+*********[#lightpink] inode
+**********[#lightpink] i_ops = sockfs_inode_ops 
+***********[#lightgreen] .listxattr = sockfs_listxattr 
+***********[#lightgreen] .setattr = sockfs_setattr 
+******* request_module(family=PF_INET)
+******** inet_init
+********* ... 
+********* sock_register()
+**********[#lightpink] inet_family_ops 
+***********[#lightpink] .family = PF_INET
+***********[#lightgreen] .create = inet_create
+********* ... 
+******* net_families[family=PF_INET]->create()
+******** inet_create()
+******* security_socket_post_create()
+***** sock_map_fd()
+**** SYS_BIND:__sys_bind()
+**** SYS_CONNECT:__sys_connect()
+**** SYS_LISTEN:__sys_listen()
+**** SYS_ACCEPT:__sys_accept4()
+**** ...
+
+@endmidmap

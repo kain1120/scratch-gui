@@ -1,0 +1,12 @@
+digraph G {
+    graph [pad=0, ranksep="0.35"];
+    subgraph cluster_softirq {
+       shape=box
+       color="darkseagreen"
+       style=solid
+       softirq [image="./function.png", margin=0, shape=none, label="softirq", labelloc="c", fontcolor="red", fontsize="14pt"]
+
+    }
+    irq [label="", shape=none]
+    softirq -> irq [dir=back, arrowtail="vee", color="darkorchid", style="dotted"] 
+}

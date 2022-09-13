@@ -1,0 +1,7 @@
+digraph G {
+    graph [pad=0, ranksep="0.35", rankdir="LR"];
+    fun [image="./function.png", imagescale=both, margin=0, shape=none, label=""]
+
+    point [label="", shape=point]
+    point -> fun [arrowhead="tee", color="red"] 
+}

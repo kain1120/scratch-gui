@@ -1,0 +1,378 @@
+@startuml
+'skinparam linetype polyline 
+'skinparam linetype ortho 
+skinparam nodesep 50
+skinparam ranksep 50
+
+together {
+package socket <<Frame>> {
+object net_families
+net_families : PF_INET
+}
+
+object inet_family_ops
+inet_family_ops : PF_INET
+inet_family_ops : [[http/location/inet_create.act.type inet_create()]]
+net_families::PF_INET --> inet_family_ops
+}
+
+package sock <<Frame>> {
+object proto_list
+}
+
+together {
+object inetsw 
+inetsw : SOCK_DGRAM 
+inetsw : SOCK_STREAM 
+inetsw : SOCK_RAW
+inetsw : SOCK_RDM
+inetsw : SOCK_SEQPACKET
+inetsw : SOCK_DCCP
+inetsw : SOCK_PACKET
+
+package inetsw_array <<Frame>> {
+object "inet_protosw" as inet_protosw0
+inet_protosw0 : SOCK_STREAM
+inet_protosw0 : IPPROTO_TCP
+inet_protosw0 : prot 
+inet_protosw0 : ops 
+
+object "inet_protosw" as inet_protosw1
+inet_protosw1 : SOCK_DGRAM
+inet_protosw1 : IPPROTO_UDP
+inet_protosw1 : prot 
+inet_protosw1 : ops 
+
+object "inet_protosw" as inet_protosw2
+inet_protosw2 : SOCK_DGRAM
+inet_protosw2 : IPPROTO_ICMP
+inet_protosw2 : prot 
+inet_protosw2 : ops 
+
+object "inet_protosw" as inet_protosw3
+inet_protosw3 : SOCK_RAW
+inet_protosw3 : IPPROTO_IP
+inet_protosw3 : prot 
+inet_protosw3 : ops 
+
+inetsw::SOCK_STREAM -> inet_protosw0
+inetsw::SOCK_DGRAM -> inet_protosw1 
+inet_protosw1 -[#green]> inet_protosw2
+inetsw::SOCK_RAW -> inet_protosw3
+}
+
+object tcp_prot 
+tcp_prot : "TCP" 
+tcp_prot : init = [[http/location/tcp_v4_init_sock.act.type tcp_v4_init_sock()]]
+tcp_prot : destroy = [[http/location/tcp_v4_destroy_sock.act.type tcp_v4_destroy_sock()]]
+tcp_prot : ioctl = [[http/location/tcp_ioctl.act.type tcp_ioctl()]]
+tcp_prot : accept = [[http/location/inet_csk_accept.act.type inet_csk_accept()]]
+tcp_prot : pre_connect = [[http/location/tcp_v4_pre_connect.act.type tcp_v4_pre_connect()]]
+tcp_prot : connect = [[http/location/tcp_v4_connect.act.type tcp_v4_connect()]]
+tcp_prot : disconnect = [[http/location/tcp_disconnect.act.type tcp_disconnect()]]
+tcp_prot : close = [[http/location/tcp_close.act.type tcp_close()]]
+tcp_prot : shutdown = [[http/location/tcp_shutdown.act.type tcp_shutdown()]]
+tcp_prot : recvmsg = [[http/location/tcp_recvmsg.act.type tcp_recvmsg()]]
+tcp_prot : sendmsg = [[http/location/tcp_sendmsg.act.type tcp_sendmsg()]]
+tcp_prot : sendpage = [[http/location/tcp_sendpage.act.type tcp_sendpage()]]
+tcp_prot : backlog_rcv = [[http/location/tcp_v4_do_rcv.act.type tcp_v4_do_rcv()]]
+tcp_prot : ...
+
+object udp_prot
+udp_prot : "UDP" 
+udp_prot : ...
+
+object raw_prot 
+raw_prot : "RAW" 
+raw_prot : ...
+
+object ping_prot 
+ping_prot : "PING" 
+ping_prot : ...
+
+proto_list -[#green]-> tcp_prot
+tcp_prot -[#green]> udp_prot
+udp_prot -[#green]> raw_prot
+raw_prot -[#green]> ping_prot
+
+inet_protosw0::prot --> tcp_prot
+inet_protosw1::prot --> udp_prot
+inet_protosw2::prot --> ping_prot
+inet_protosw3::prot --> raw_prot
+
+object inet_stream_ops
+inet_stream_ops : release = [[http/location/inet_release.act.type inet_release()]]
+inet_stream_ops : bind = [[http/location/inet_bind.act.type inet_bind()]]
+inet_stream_ops : connect = [[http/location/inet_stream_connect.act.type inet_stream_connect()]]
+inet_stream_ops : accept = [[http/location/inet_accept.act.type inet_accept()]]
+inet_stream_ops : poll = [[http/location/tcp_poll.act.type tcp_poll()]]
+inet_stream_ops : ioctl = [[http/location/inet_ioctl.act.type inet_ioctl()]]
+inet_stream_ops : listen = [[http/location/inet_listen.act.type inet_listen()]]
+inet_stream_ops : shutdown = [[http/location/inet_shutdown.act.type inet_shutdown()]]
+inet_stream_ops : sendmsg = [[http/location/inet_sendmsg.act.type inet_sendmsg()]]
+inet_stream_ops : sendpage = [[http/location/inet_sendpage.act.type inet_sendpage()]]
+inet_stream_ops : splice_read = [[http/location/tcp_splice_read.act.type tcp_splice_read()]]
+inet_stream_ops : ...
+
+object inet_dgram_ops
+inet_dgram_ops : ...
+object inet_sockraw_ops
+inet_sockraw_ops : ...
+
+inet_protosw0::ops --> inet_stream_ops
+inet_protosw1::ops --> inet_dgram_ops
+inet_protosw2::ops --> inet_sockraw_ops
+inet_protosw3::ops --> inet_sockraw_ops
+
+object socket
+socket : ops
+socket : sk
+inet_stream_ops <.. socket::ops 
+
+object "inet_sock(sock)" as inet_sock
+inet_sock : sk_prot
+inet_sock : sk_net
+inet_sock : sk_state_change = [[http/location/sock_def_wakeup.act.type sock_def_wakeup()]]
+inet_sock : sk_data_ready = [[http/location/sock_def_readable.act.type sock_def_readable()]]
+inet_sock : sk_write_space = [[http/location/sock_def_write_space.act.type sock_def_write_space()]]
+inet_sock : sk_error_report = [[http/location/sock_def_error_report.act.type sock_def_error_report()]]
+inet_sock : sk_destruct = [[http/location/sock_def_destruct.act.type sock_def_destruct()]]
+inet_sock : sk_destruct = [[http/location/inet_sock_destruct.act.type inet_sock_destruct()]]
+inet_sock : sk_backlog_rcv = sk_prot->backlog_rcv
+socket::sk -> inet_sock
+tcp_prot <.. inet_sock::sk_prot 
+}
+
+together {
+object icmp_protocol
+object udp_protocol
+
+object tcp_protocol
+tcp_protocol : early_demux = [[http/location/tcp_v4_early_demux.act.type tcp_v4_early_demux()]]
+tcp_protocol : early_demux_handler = [[http/location/tcp_v4_early_demux.act.type tcp_v4_early_demux()]]
+tcp_protocol : handler = [[http/location/tcp_v4_rcv.act.type tcp_v4_rcv()]]
+tcp_protocol : err_handler = [[http/location/tcp_v4_err.act.type tcp_v4_err()]]
+
+object igmp_protocol
+
+object inet_protos 
+inet_protos : IPPROTO_ICMP
+inet_protos : IPPROTO_UDP
+inet_protos : IPPROTO_TCP
+inet_protos : IPPROTO_IGMP
+inet_protos::IPPROTO_ICMP --> icmp_protocol
+inet_protos::IPPROTO_UDP --> udp_protocol
+inet_protos::IPPROTO_TCP --> tcp_protocol
+inet_protos::IPPROTO_IGMP --> igmp_protocol
+}
+
+together {
+package neighbour {
+object neigh_tables
+neigh_tables : NEIGH_ARP_TABLE
+}
+}
+
+together {
+package dev {
+object ptype_all
+object ptype_base
+ptype_base : ETH_P_IP
+ptype_base : ETH_P_ARP
+
+object netdev_chain
+netdev_chain : head
+object inetaddr_chain
+inetaddr_chain : head 
+}
+}
+
+together {
+package rtnetlink {
+object rtnl_af_ops
+object rtnl_msg_handlers
+rtnl_msg_handlers : PF_INET
+rtnl_msg_handlers : RTM_NEWADDR
+rtnl_msg_handlers : RTM_DELADDR
+rtnl_msg_handlers : RTM_GETADDR
+rtnl_msg_handlers : RTM_GETNETCONF 
+rtnl_msg_handlers : RTM_NEWROUTE
+rtnl_msg_handlers : RTM_DELROUTE
+rtnl_msg_handlers : RTM_GETROUTE
+}
+}
+
+together {
+package lwtunnel {
+object lwtun_encaps
+lwtun_encaps : LWTUNNEL_ENCAP_IP
+lwtun_encaps : LWTUNNEL_ENCAP_IP6
+}
+
+package arp {
+object arp_packet_type
+arp_packet_type : func = [[http/location/arp_rcv.act.type arp_rcv()]]
+ptype_base::ETH_P_ARP --> arp_packet_type
+
+object arp_netdev_notifier
+arp_netdev_notifier : notifier_call = [[http/location/arp_netdev_event.act.type arp_netdev_event()]]
+netdev_chain::head --> arp_netdev_notifier
+
+object arp_tbl
+arp_tbl : family = AF_INET
+arp_tbl : protocol = ETH_P_IP
+arp_tbl : hash = [[http/location/arp_hash.act.type arp_hash()]]
+arp_tbl : key_eq = [[http/location/arp_key_eq.act.type arp_key_eq()]]
+arp_tbl : constructor = [[http/location/arp_constructor.act.type arp_constructor()]]
+arp_tbl : parp_redo = [[http/location/parp_redo.act.type parp_redo()]]
+arp_tbl : is_multicast = [[http/location/arp_is_multicast.act.type arp_is_multicast()]]
+arp_tbl : gc_work = [[http/location/neigh_periodic_work.act.type neigh_periodic_work(|)]]
+arp_tbl : managed_work = [[http/location/neigh_managed_work.act.type neigh_managed_work(|)]]
+arp_tbl : proxy_timer = [[http/location/neigh_proxy_process.act.type neigh_proxy_process(@)]]
+arp_tbl : proxy_queue = [[http/location/neigh_table_proxy_queue_class.act.type neigh_table_proxy_queue_class(..)]]
+
+neigh_tables::NEIGH_ARP_TABLE --> arp_tbl
+}
+
+together {
+package ip {
+object ip_packet_type
+ip_packet_type : func = [[http/location/ip_rcv.act.type ip_rcv()]]
+ip_packet_type : list_func = [[http/location/ip_list_rcv.act.type ip_list_rcv()]]
+ptype_base::ETH_P_IP --> ip_packet_type
+
+object ip_idents
+object ip_tstamps
+object "rt_uncached_list[CPU]" as rt_uncached_list
+object ipv4_dst_ops
+ipv4_dst_ops : family = AF_INET
+ipv4_dst_ops : check = [[http/location/ipv4_dst_check.act.type ipv4_dst_check()]]
+ipv4_dst_ops : default_advmss = [[http/location/ipv4_default_advmss.act.type ipv4_default_advmss()]]
+ipv4_dst_ops : mtu = [[http/location/ipv4_mtu.act.type ipv4_mtu()]]
+ipv4_dst_ops : cow_metrics = [[http/location/ipv4_cow_metrics.act.type ipv4_cow_metrics()]]
+ipv4_dst_ops : destroy = [[http/location/ipv4_dst_destroy.act.type ipv4_dst_destroy()]]
+ipv4_dst_ops : negative_advice = [[http/location/ipv4_negative_advice.act.type ipv4_negative_advice()]]
+ipv4_dst_ops : link_failure = [[http/location/ipv4_link_failure.act.type ipv4_link_failure()]]
+ipv4_dst_ops : update_pmtu = [[http/location/ip_rt_update_pmtu.act.type ip_rt_update_pmtu()]]
+ipv4_dst_ops : redirect = [[http/location/ip_do_redirect.act.type ip_do_redirect()]]
+ipv4_dst_ops : local_out = [[http/location/__ip_local_out.act.type __ip_local_out()]]
+ipv4_dst_ops : neigh_lookup = [[http/location/ipv4_neigh_lookup.act.type ipv4_neigh_lookup()]]
+ipv4_dst_ops : confirm_neigh = [[http/location/ipv4_confirm_neigh.act.type ipv4_confirm_neigh()]]
+
+object ipv4_dst_blackhole_ops
+ipv4_dst_blackhole_ops : family = AF_INET
+ipv4_dst_blackhole_ops : default_advmss = [[http/location/ipv4_default_advmss.act.type ipv4_default_advmss()]]
+ipv4_dst_blackhole_ops : neigh_lookup = [[http/location/ipv4_neigh_lookup.act.type ipv4_neigh_lookup()]]
+ipv4_dst_blackhole_ops : check = [[http/location/dst_blackhole_check.act.type dst_blackhole_check()]]
+ipv4_dst_blackhole_ops : cow_metrics = [[http/location/dst_blackhole_cow_metrics.act.type dst_blackhole_cow_metricsa()]]
+ipv4_dst_blackhole_ops : update_pmtu = [[http/location/dst_blackhole_update_pmtu.act.type dst_blackhole_update_pmtu()]]
+ipv4_dst_blackhole_ops : redirect = [[http/location/dst_blackhole_redirect.act.type dst_blackhole_redirect()]]
+ipv4_dst_blackhole_ops : mtu = [[http/location/dst_blackhole_mtu.act.type dst_blackhole_mtu()]]
+
+object inet_addr_lst
+object ip_netdev_notifier
+ip_netdev_notifier : notifier_call = [[http/location/inetdev_event.act.type inetdev_event()]]
+netdev_chain::head --> ip_netdev_notifier
+
+object fib_netdev_notifier
+fib_netdev_notifier : notifier_call = [[http/location/fib_netdev_event.act.type fib_netdev_event()]]
+netdev_chain::head --> fib_netdev_notifier
+
+object fib_inetaddr_notifier 
+fib_inetaddr_notifier : notifier_call = [[http/location/fib_inetaddr_event.act.type fib_inetaddr_event()]]
+inetaddr_chain::head --> fib_inetaddr_notifier
+
+object check_lifetime_work
+check_lifetime_work : [[http/location/check_lifetime.act.type check_lifetime(|)]]
+
+object inet_af_ops
+inet_af_ops : family = AF_INET
+inet_af_ops : fill_link_af = [[http/location/inet_fill_link_af.act.type inet_fill_link_af()]]
+inet_af_ops : get_link_af_size = [[http/location/inet_get_link_af_size.act.type inet_get_link_af_size()]]
+inet_af_ops : validate_link_af = [[http/location/inet_validate_link_af.act.type inet_validate_link_af()]]
+inet_af_ops : set_link_af = [[http/location/inet_set_link_af.act.type inet_set_link_af()]]
+rtnl_af_ops --> inet_af_ops
+
+object "rtnl_link" as rtnl_link0
+rtnl_link0 : doit = [[http/location/inet_rtm_newaddr.act.type inet_rtm_newaddr()]]
+object "rtnl_link" as rtnl_link1
+rtnl_link1 : doit = [[http/location/inet_rtm_deladdr.act.type inet_rtm_deladdr()]]
+object "rtnl_link" as rtnl_link2
+rtnl_link2 : dumpit = [[http/location/inet_dump_ifaddr.act.type inet_dump_ifaddr()]]
+object "rtnl_link" as rtnl_link3
+rtnl_link3 : doit = [[http/location/inet_netconf_get_devconf.act.type inet_netconf_get_devconf()]]
+rtnl_link3 : dumpit = [[http/location/inet_netconf_dump_devconf.act.type inet_netconf_dump_devconf()]]
+object "rtnl_link" as rtnl_link4
+rtnl_link4 : doit = [[http/location/inet_rtm_newroute.act.type inet_rtm_newroute()]]
+object "rtnl_link" as rtnl_link5
+rtnl_link5 : doit = [[http/location/inet_rtm_delroute.act.type inet_rtm_delroute()]]
+object "rtnl_link" as rtnl_link6
+rtnl_link6 : doit = [[http/location/inet_rtm_getroute.act.type inet_rtm_getroute()]]
+rtnl_link6 : dumpit = [[http/location/inet_dump_fib.act.type inet_dump_fib()]]
+
+rtnl_msg_handlers::RTM_NEWADDR --> rtnl_link0
+rtnl_msg_handlers::RTM_DELADDR --> rtnl_link1
+rtnl_msg_handlers::RTM_GETADDR --> rtnl_link2
+rtnl_msg_handlers::RTM_GETNETCONF --> rtnl_link3
+rtnl_msg_handlers::RTM_NEWROUTE --> rtnl_link4
+rtnl_msg_handlers::RTM_DELROUTE --> rtnl_link5
+rtnl_msg_handlers::RTM_GETROUTE --> rtnl_link6
+
+object ip4_frags
+ip4_frags : constructor = [[http/location/ip4_frag_init.act.type ip4_frag_init()]]
+ip4_frags : destructor = [[http/location/ip4_frag_free.act.type ip4_frag_free()]]
+ip4_frags : frag_expire = [[http/location/ip_expire.act.type ip_expire()]]
+ip4_frags : rhash_params 
+
+object ip4_rhash_params
+ip4_rhash_params : hashfn = [[http/location/ip4_key_hashfn.act.type ip4_key_hashfn()]]
+ip4_rhash_params : obj_hashfn = [[http/location/ip4_obj_hashfn.act.type ip4_obj_hashfn()]]
+ip4_rhash_params : obj_cmpfn = [[http/location/ip4_obj_cmpfn.act.type ip4_obj_cmpfn()]]
+ip4_frags::rhash_params --> ip4_rhash_params
+
+object ip_tun_lwt_ops
+ip_tun_lwt_ops : build_state = [[http/location/ip_tun_build_state.act.type ip_tun_build_state()]]
+ip_tun_lwt_ops : destroy_state = [[http/location/ip_tun_destroy_state.act.type ip_tun_destroy_state()]]
+ip_tun_lwt_ops : fill_encap = [[http/location/ip_tun_fill_encap_info.act.type ip_tun_fill_encap_info()]]
+ip_tun_lwt_ops : get_encap_size = [[http/location/ip_tun_encap_nlsize.act.type ip_tun_encap_nlsize()]]
+ip_tun_lwt_ops : cmp_encap = [[http/location/ip_tun_cmp_encap.act.type ip_tun_cmp_encap()]]
+lwtun_encaps::LWTUNNEL_ENCAP_IP --> ip_tun_lwt_ops
+
+object ip6_tun_lwt_ops 
+ip6_tun_lwt_ops : build_state = [[http/location/ip6_tun_build_state.act.type ip6_tun_build_state()]]
+ip6_tun_lwt_ops : fill_encap = [[http/location/ip6_tun_fill_encap_info.act.type ip6_tun_fill_encap_info()]]
+ip6_tun_lwt_ops : get_encap_size = [[http/location/ip6_tun_encap_nlsize.act.type ip6_tun_encap_nlsize()]]
+ip6_tun_lwt_ops : cmp_encap = [[http/location/ip_tun_cmp_encap.act.type ip_tun_cmp_encap()]]
+lwtun_encaps::LWTUNNEL_ENCAP_IP6 --> ip6_tun_lwt_ops
+}
+
+package tcp {
+object tcp_orphan_timer
+tcp_orphan_timer : [[http/location/tcp_orphan_update.act.type tcp_orphan_update()]]
+object tcp_hashinfo
+tcp_hashinfo : listening_hash
+tcp_hashinfo : lhash2 "tcp_listen_portaddr_hash"
+tcp_hashinfo : bind_bucket_cachep
+tcp_hashinfo : ehash "TCP established"
+tcp_hashinfo : bhash "TCP bind"
+
+object "tsq_tasklet[CPU]" as tsq_tasklet
+tsq_tasklet : [[http/location/tcp_tasklet_func.act.type tcp_tasklet_func()]]
+
+object tcp_cong_list
+object tcp_reno 
+tcp_reno : name = "reno"
+tcp_reno : ssthresh = [[http/location/tcp_reno_ssthresh.act.type tcp_reno_ssthresh()]]
+tcp_reno : cong_avoid = [[http/location/tcp_reno_cong_avoid.act.type tcp_reno_cong_avoid()]]
+tcp_reno : undo_cwnd = [[http/location/tcp_reno_undo_cwnd.act.type tcp_reno_undo_cwnd()]]
+tcp_cong_list --> tcp_reno 
+}
+
+package udp {
+object udp_table
+udp_table : hash
+udp_table : hash2
+}
+}
+
+@enduml
